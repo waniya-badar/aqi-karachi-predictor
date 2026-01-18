@@ -80,9 +80,17 @@ jobs:
               if os.path.exists(registry_path):
                   with open(registry_path, 'r') as f:
                       registry = json.load(f)
-                      for model_name, metrics in registry.items():
-                          if 'r2_score' in metrics:
-                              print(f'  {model_name}: R² = {metrics[\"r2_score\"]:.4f}')
+                      # Registry is a list of entries; get the latest entry
+                      if isinstance(registry, list) and len(registry) > 0:
+                          latest = registry[-1]
+                          if 'models' in latest:
+                              for model_name, metrics in latest['models'].items():
+                                  if 'test_r2' in metrics:
+                                      print(f'  {model_name}: R² = {metrics[\"test_r2\"]:.4f}')
+                      elif isinstance(registry, dict):
+                          for model_name, metrics in registry.items():
+                              if 'r2_score' in metrics:
+                                  print(f'  {model_name}: R² = {metrics[\"r2_score\"]:.4f}')
               else:
                   print('Registry file not found at', registry_path)
           else:
@@ -159,7 +167,12 @@ jobs:
           
           if os.path.exists('models/model_registry.json'):
               with open('models/model_registry.json', 'r') as f:
-                  report['models'] = json.load(f)
+                  data = json.load(f)
+                  # Registry is a list; get latest entry's models
+                  if isinstance(data, list) and len(data) > 0:
+                      report['models'] = data[-1].get('models', {})
+                  elif isinstance(data, dict):
+                      report['models'] = data
           
           print(json.dumps(report, indent=2))
           "
