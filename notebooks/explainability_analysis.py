@@ -98,46 +98,45 @@ def load_data():
 
 
 def prepare_features(df):
-    """Prepare features for model prediction"""
+    """Prepare features for model prediction - matches training data preparation"""
     print("\nPreparing features...")
     
     try:
-        engineer = FeatureEngineer()
+        # Use the same approach as ModelTrainer.prepare_data()
+        exclude_cols = ['aqi', 'timestamp', 'date', '_id', 'inserted_at', 
+                        'station_name', 'latitude', 'longitude']
         
-        # Extract features from each row
-        X_list = []
-        for idx, row in df.iterrows():
-            raw_data = {
-                'timestamp': row['timestamp'],
-                'pm25': row.get('pm25', 0),
-                'pm10': row.get('pm10', 0),
-                'no2': row.get('no2', 0),
-                'so2': row.get('so2', 0),
-                'co': row.get('co', 0),
-                'o3': row.get('o3', 0),
-                'temperature': row.get('temperature', 0),
-                'humidity': row.get('humidity', 0),
-                'wind_speed': row.get('wind_speed', 0),
-                'pressure': row.get('pressure', 0),
-                'visibility': row.get('visibility', 0)
-            }
-            features = engineer.create_features(raw_data)
-            if features:
-                X_list.append(list(features.values()))
-        
-        # Convert to DataFrame
+        # Load the feature names the model was trained on
         feature_names = load_feature_names()
-        if feature_names and len(X_list) > 0:
-            X = pd.DataFrame(X_list, columns=feature_names[:len(X_list[0])])
+        
+        if feature_names:
+            # Use only the features the model expects
+            available_features = [f for f in feature_names if f in df.columns]
+            if not available_features:
+                print(f"[WARN] No matching features found. Model expects: {feature_names[:5]}...")
+                # Fall back to numeric columns excluding metadata
+                available_features = [col for col in df.columns 
+                                     if col not in exclude_cols 
+                                     and df[col].dtype in ['int64', 'float64']]
         else:
-            X = pd.DataFrame(X_list)
+            # No feature names file - use numeric columns
+            available_features = [col for col in df.columns 
+                                 if col not in exclude_cols 
+                                 and df[col].dtype in ['int64', 'float64']]
+        
+        print(f"Using {len(available_features)} features: {available_features[:5]}...")
+        
+        X = df[available_features].copy()
+        X = X.fillna(X.median(numeric_only=True))
         
         print(f"[OK] Prepared {len(X)} samples with {X.shape[1]} features")
         
-        return X, feature_names if feature_names else list(X.columns)
+        return X, available_features
     
     except Exception as e:
         print(f"[FAIL] Error preparing features: {e}")
+        import traceback
+        traceback.print_exc()
         return None, None
 
 
