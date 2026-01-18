@@ -83,21 +83,28 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            // If the workflow was triggered by an issue event, comment on that issue.
-            if (context.issue && context.issue.number) {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: context.issue.number,
-                body
-              });
-            } else {
-              // Otherwise, create a new issue so maintainers are notified.
-              const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${github.context.runId}`;
-              await github.rest.issues.create({
-                owner,
-                repo,
-                title: 'CI: Feature engineering pipeline failed',
-                body: `${body}\n\nRun details: ${runUrl}`
-              });
+            // Wrap in try/catch to avoid unhandled errors in the notification step
+            try {
+              const issueNumber = context.issue && context.issue.number ? Number(context.issue.number) : null;
+
+              if (issueNumber && !Number.isNaN(issueNumber) && issueNumber > 0) {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  body
+                });
+              } else {
+                // Create a new issue so maintainers are notified and include run link
+                const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${github.context.runId}`;
+                await github.rest.issues.create({
+                  owner,
+                  repo,
+                  title: 'CI: Feature engineering pipeline failed',
+                  body: `${body}\n\nRun details: ${runUrl}`
+                });
+              }
+            } catch (err) {
+              console.log('Notification step failed:', err && err.message ? err.message : err);
+              // Don't rethrow: notification failure should not mask original job logs
             }
