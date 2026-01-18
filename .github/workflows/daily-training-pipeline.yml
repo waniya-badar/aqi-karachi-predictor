@@ -69,6 +69,7 @@ jobs:
           import json
           
           model_dir = 'models/saved_models'
+          registry_path = 'models/model_registry.json'
           models = ['ridge_latest.pkl', 'gradient_boosting_latest.pkl', 'random_forest_latest.pkl']
           
           all_exist = all(os.path.exists(os.path.join(model_dir, m)) for m in models)
@@ -76,11 +77,14 @@ jobs:
           if all_exist:
               print('All models saved successfully')
               
-              with open(os.path.join(model_dir, 'model_registry.json'), 'r') as f:
-                  registry = json.load(f)
-                  for model_name, metrics in registry.items():
-                      if 'r2_score' in metrics:
-                          print(f'  {model_name}: R² = {metrics[\"r2_score\"]:.4f}')
+              if os.path.exists(registry_path):
+                  with open(registry_path, 'r') as f:
+                      registry = json.load(f)
+                      for model_name, metrics in registry.items():
+                          if 'r2_score' in metrics:
+                              print(f'  {model_name}: R² = {metrics[\"r2_score\"]:.4f}')
+              else:
+                  print('Registry file not found at', registry_path)
           else:
               print('Some models are missing')
               exit(1)
@@ -153,8 +157,8 @@ jobs:
               'models': {}
           }
           
-          if os.path.exists('models/saved_models/model_registry.json'):
-              with open('models/saved_models/model_registry.json', 'r') as f:
+          if os.path.exists('models/model_registry.json'):
+              with open('models/model_registry.json', 'r') as f:
                   report['models'] = json.load(f)
           
           print(json.dumps(report, indent=2))
