@@ -35,6 +35,19 @@ jobs:
           echo "MONGODB_URI=$MONGODB_URI" >> $GITHUB_ENV
           echo "MONGODB_DB_NAME=$MONGODB_DB_NAME" >> $GITHUB_ENV
       
+      - name: Download trained models from latest training run
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: daily-training-pipeline.yml
+          name: trained-models
+          path: models/saved_models/
+          if_no_artifact_found: warn
+      
+      - name: List downloaded models
+        run: |
+          echo "Models directory contents:"
+          ls -la models/saved_models/ || echo "No models directory"
+      
       - name: Run EDA analysis
         run: |
           python notebooks/eda_analysis.py
