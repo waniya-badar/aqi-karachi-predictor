@@ -45,42 +45,35 @@ class ModelTrainer:
         Returns:
             Tuple of (X_train, X_test, y_train, y_test, feature_names)
         """
-        print(f"\n=== Preparing Data ===")
+        print(f"\nPreparing Data")
         print(f"Total records: {len(df)}")
         
-        # Remove records with missing target
         df = df[df[target_col].notna()].copy()
         print(f"Records with valid AQI: {len(df)}")
         
-        # Select feature columns
         feature_cols = [col for col in df.columns if col not in self.exclude_cols]
         
-        # Also exclude any lag/rolling features that have too many NaN
         valid_features = []
         for col in feature_cols:
             if col in df.columns and df[col].dtype in ['int64', 'float64']:
-                if df[col].notna().sum() / len(df) > 0.5:  # Keep if >50% valid
+                if df[col].notna().sum() / len(df) > 0.5:
                     valid_features.append(col)
         
         if not valid_features:
-            print("⚠ No valid features found, using default features")
+            print("No valid features found, using default features")
             valid_features = [col for col in feature_cols if col in df.columns]
         
         print(f"Selected {len(valid_features)} features: {valid_features[:5]}...")
         
-        # Prepare X and y
         X = df[valid_features].copy()
         y = df[target_col].copy()
         
-        # Handle missing values
         X = X.fillna(X.median(numeric_only=True))
         
-        # Check if we have enough samples
         if len(X) < 20:
             print(f"Warning: Only {len(X)} samples available")
         
-        # Split data (80% train, 20% test)
-        test_size = max(0.2, min(0.3, 10/len(X)))  # Adjust for small datasets
+        test_size = max(0.2, min(0.3, 10/len(X)))
         
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=test_size, random_state=42, shuffle=True
@@ -89,11 +82,9 @@ class ModelTrainer:
         print(f"Training set: {len(X_train)} samples")
         print(f"Test set: {len(X_test)} samples")
         
-        # Scale features
         X_train_scaled = self.scaler.fit_transform(X_train)
         X_test_scaled = self.scaler.transform(X_test)
         
-        # Convert back to DataFrame to keep feature names
         X_train_scaled = pd.DataFrame(X_train_scaled, columns=valid_features, index=X_train.index)
         X_test_scaled = pd.DataFrame(X_test_scaled, columns=valid_features, index=X_test.index)
         
@@ -240,26 +231,18 @@ class ModelTrainer:
         registry_path = os.path.join('models', 'model_registry.json')
         
         # Load existing registry
-        registry = []
         if os.path.exists(registry_path):
-            try:
-                with open(registry_path, 'r') as f:
-                    content = f.read().strip()
-                    if content:
-                        registry = json.loads(content)
-            except (json.JSONDecodeError, IOError):
-                registry = []
+            with open(registry_path, 'r') as f:
+                registry = json.load(f)
+        else:
+            registry = []
         
         # Add new results
         results_copy = {}
         for model_name, result in self.results.items():
-            result_copy = {}
-            for key, value in result.items():
-                if key == 'predictions':
-                    # Convert numpy array to list
-                    result_copy[key] = value.tolist() if hasattr(value, 'tolist') else list(value)
-                else:
-                    result_copy[key] = value
+            result_copy = result.copy()
+            if 'predictions' in result_copy:
+                result_copy['predictions'] = result_copy['predictions'].tolist() if hasattr(result_copy['predictions'], 'tolist') else result_copy['predictions']
             results_copy[model_name] = result_copy
         
         registry.append({
@@ -328,26 +311,6 @@ class ModelTrainer:
         
         return importance_df
 
-    def train_all_models(self, df: pd.DataFrame) -> Dict:
-        """Convenience wrapper to prepare data and train all models.
 
-        Returns a dictionary with model results keyed by model name.
-        """
-        # Prepare data
-        X_train, X_test, y_train, y_test, feature_names = self.prepare_data(df)
-
-        # Train models
-        self.train_random_forest(X_train, y_train, X_test, y_test)
-        self.train_gradient_boosting(X_train, y_train, X_test, y_test)
-        self.train_ridge(X_train, y_train, X_test, y_test)
-
-        # Compare and save
-        best = self.compare_models()
-        self.save_models(feature_names)
-
-        return self.results
-
-
-# Test
 if __name__ == "__main__":
     print("Model trainer module loaded successfully")

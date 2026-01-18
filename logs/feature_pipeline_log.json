@@ -1,0 +1,42 @@
+[
+  {
+    "start_time": "2026-01-18T16:16:00.303400",
+    "steps": {
+      "fetch": "SUCCESS",
+      "engineering": "SUCCESS",
+      "storage": "SUCCESS",
+      "verification": "SUCCESS"
+    },
+    "success": true,
+    "error": null,
+    "feature_count": 22,
+    "total_records": 2162,
+    "end_time": "2026-01-18T16:16:12.562310"
+  },
+  {
+    "start_time": "2026-01-18T16:16:00.303400",
+    "steps": {
+      "fetch": "SUCCESS",
+      "engineering": "SUCCESS",
+      "storage": "SUCCESS",
+      "verification": "SUCCESS"
+    },
+    "success": true,
+    "error": "name 'db_handler' is not defined",
+    "feature_count": 22,
+    "total_records": 2162,
+    "end_time": "2026-01-18T16:16:12.565831"
+  },
+  {
+    "start_time": "2026-01-18T16:18:13.003452",
+    "steps": {
+      "fetch": "SUCCESS",
+      "engineering": "SUCCESS",
+      "storage": "SUCCESS"
+    },
+    "success": true,
+    "error": null,
+    "total_records": 2163,
+    "end_time": "2026-01-18T16:18:19.999604"
+  }
+]

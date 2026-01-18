@@ -1,0 +1,13 @@
+[
+  "pm25",
+  "pm10",
+  "no2",
+  "so2",
+  "co",
+  "o3",
+  "temperature",
+  "humidity",
+  "wind_speed",
+  "pressure",
+  "visibility"
+]

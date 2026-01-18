@@ -29,17 +29,15 @@ class MongoDBHandler:
         """Establish connection to MongoDB"""
         try:
             self.client = MongoClient(self.uri, serverSelectionTimeoutMS=5000)
-            # Test connection
             self.client.admin.command('ping')
             self.db = self.client[self.db_name]
-            print(f"✓ Connected to MongoDB: {self.db_name}")
+            print(f"Connected to MongoDB: {self.db_name}")
             
-            # Create indexes for faster queries
             self.db.features.create_index([("timestamp", DESCENDING)])
             self.db.features.create_index([("date", DESCENDING)])
             
         except ConnectionFailure as e:
-            print(f"✗ Failed to connect to MongoDB: {e}")
+            print(f"Failed to connect to MongoDB: {e}")
             raise
     
     def insert_features(self, features: Dict) -> bool:
@@ -62,21 +60,19 @@ class MongoDBHandler:
             })
             
             if existing:
-                # Update existing record
                 self.db.features.update_one(
                     {'timestamp': features['timestamp']},
                     {'$set': features}
                 )
-                print(f"✓ Updated features for {features['timestamp']}")
+                print(f"Updated features for {features['timestamp']}")
             else:
-                # Insert new record
                 self.db.features.insert_one(features)
-                print(f"✓ Inserted features for {features['timestamp']}")
+                print(f"Inserted features for {features['timestamp']}")
             
             return True
             
         except Exception as e:
-            print(f"✗ Error inserting features: {e}")
+            print(f"Error inserting features: {e}")
             return False
     
     def get_latest_features(self, limit: int = 1) -> Optional[pd.DataFrame]:
@@ -94,10 +90,9 @@ class MongoDBHandler:
             data = list(cursor)
             
             if not data:
-                print("⚠ No features found in database")
+                print("No features found in database")
                 return None
             
-            # Remove MongoDB ID field
             for record in data:
                 record.pop('_id', None)
                 record.pop('inserted_at', None)
@@ -106,7 +101,7 @@ class MongoDBHandler:
             return df
             
         except Exception as e:
-            print(f"✗ Error fetching latest features: {e}")
+            print(f"Error fetching latest features: {e}")
             return None
     
     def get_features_by_date_range(self, start_date: datetime, 
@@ -133,20 +128,19 @@ class MongoDBHandler:
             data = list(cursor)
             
             if not data:
-                print(f"⚠ No features found between {start_date} and {end_date}")
+                print(f"No features found between {start_date} and {end_date}")
                 return None
             
-            # Clean data
             for record in data:
                 record.pop('_id', None)
                 record.pop('inserted_at', None)
             
             df = pd.DataFrame(data)
-            print(f"✓ Retrieved {len(df)} records")
+            print(f"Retrieved {len(df)} records")
             return df
             
         except Exception as e:
-            print(f"✗ Error fetching features by date: {e}")
+            print(f"Error fetching features by date: {e}")
             return None
     
     def get_training_data(self, days: int = 120) -> Optional[pd.DataFrame]:
@@ -191,17 +185,16 @@ class MongoDBHandler:
             }
             
         except Exception as e:
-            print(f"✗ Error getting statistics: {e}")
+            print(f"Error getting statistics: {e}")
             return {}
     
     def close(self):
         """Close MongoDB connection"""
         if self.client:
             self.client.close()
-            print("✓ MongoDB connection closed")
+            print("MongoDB connection closed")
 
 
-# Test the connection
 if __name__ == "__main__":
     handler = MongoDBHandler()
     stats = handler.get_data_statistics()

@@ -1,11 +1,12 @@
 """
 Feature Pipeline - Runs every hour to collect and store data
-This is the main pipeline that fetches data and stores features
 """
 
 import sys
 import os
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime
+import json
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -13,102 +14,126 @@ from src.data_fetcher import AQICNFetcher
 from src.feature_engineering import FeatureEngineer
 from src.mongodb_handler import MongoDBHandler
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-def run_feature_pipeline():
-    """
-    Main feature pipeline function
-    Fetches current AQI data, creates features, and stores in MongoDB
-    """
-    print(f"\n{'='*60}")
-    print(f"Feature Pipeline Started: {datetime.now()}")
-    print(f"{'='*60}\n")
+
+def run_feature_pipeline(dry_run=False):
+    """Main feature pipeline function"""
+    logger.info("Feature Pipeline Started")
     
-    # Initialize components
-    fetcher = AQICNFetcher()
-    engineer = FeatureEngineer()
-    db_handler = MongoDBHandler()
+    start_time = datetime.utcnow()
+    pipeline_status = {
+        'start_time': start_time.isoformat(),
+        'steps': {},
+        'success': False,
+        'error': None
+    }
+    
+    db_handler = None
     
     try:
-        #Fetch current data from AQICN
-        print("Step 1: Fetching current AQI data...")
+        fetcher = AQICNFetcher()
+        engineer = FeatureEngineer()
+        db_handler = MongoDBHandler()
+        logger.info("Components initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize components: {e}")
+        pipeline_status['error'] = str(e)
+        _save_pipeline_log(pipeline_status)
+        return False
+    
+    try:
+        logger.info("Step 1: Fetching current AQI data...")
         raw_data = fetcher.fetch_current_data()
         
         if not raw_data:
-            print("✗ Failed to fetch data from API")
+            logger.error("Failed to fetch data from API")
+            pipeline_status['steps']['fetch'] = 'FAILED'
+            _save_pipeline_log(pipeline_status)
             return False
         
-        #Create features from raw data
-        print("\nStep 2: Engineering features...")
+        logger.info(f"Successfully fetched AQI data: {raw_data.get('aqi', 'N/A')}")
+        pipeline_status['steps']['fetch'] = 'SUCCESS'
+        
+        logger.info("Step 2: Engineering features...")
         features = engineer.create_features(raw_data)
         
         if not features:
-            print("✗ Failed to create features")
+            logger.error("Failed to create features")
+            pipeline_status['steps']['engineering'] = 'FAILED'
+            _save_pipeline_log(pipeline_status)
             return False
         
-        #Store features in MongoDB
-        print("\nStep 3: Storing features in MongoDB...")
-        success = db_handler.insert_features(features)
+        logger.info(f"Successfully created {len(features)} features")
+        pipeline_status['steps']['engineering'] = 'SUCCESS'
         
-        if not success:
-            print("✗ Failed to store features")
-            return False
+        if not dry_run:
+            logger.info("Step 3: Storing features in MongoDB...")
+            success = db_handler.insert_features(features)
+            
+            if not success:
+                logger.error("Failed to store features")
+                pipeline_status['steps']['storage'] = 'FAILED'
+                _save_pipeline_log(pipeline_status)
+                return False
+            
+            logger.info("Successfully stored features in MongoDB")
+            pipeline_status['steps']['storage'] = 'SUCCESS'
+            
+            count = db_handler.db.features.count_documents({})
+            logger.info(f"Total records: {count}")
+            pipeline_status['total_records'] = count
         
-        #Show statistics
-        print("\nStep 4: Database statistics...")
-        stats = db_handler.get_data_statistics()
-        print(f"Total records in database: {stats['total_records']}")
-        print(f"Date range: {stats['date_range_days']} days")
+        pipeline_status['success'] = True
+        pipeline_status['end_time'] = datetime.utcnow().isoformat()
         
-        #Check for hazardous AQI and send alerts
-        print("\nStep 5: Monitoring AQI for alerts...")
-        from src.alert_system import AlertSystem
-        alert_system = AlertSystem()
-        alert_system.monitor_aqi(features['aqi'])
-        
-        print(f"\n{'='*60}")
-        print(f"✓ Feature Pipeline Completed Successfully!")
-        print(f"{'='*60}\n")
-        
+        _save_pipeline_log(pipeline_status)
+        print(f"\nFeature Pipeline Completed Successfully!")
+        print(f"AQI: {raw_data.get('aqi', 'N/A')}, Features: {len(features)}\n")
         return True
         
     except Exception as e:
-        print(f"\n✗ Pipeline failed with error: {e}")
+        logger.error(f"Error: {e}", exc_info=True)
+        pipeline_status['error'] = str(e)
+        _save_pipeline_log(pipeline_status)
         return False
         
     finally:
-        # Always close database connection
-        db_handler.close()
+        if db_handler:
+            try:
+                db_handler.close()
+            except:
+                pass
 
 
-def backfill_historical_data(days: int = 7):
-    """
-    Backfill historical data by running pipeline multiple times
-    Note: This simulates historical data since free API doesn't provide it
+def _save_pipeline_log(pipeline_status):
+    """Save pipeline execution log"""
+    log_file = 'logs/feature_pipeline_log.json'
+    os.makedirs('logs', exist_ok=True)
     
-    Args:
-        days: Number of days to backfill (just runs pipeline multiple times)
-    """
-    print(f"\n{'='*60}")
-    print(f"Backfill Process Started: {days} days")
-    print(f"{'='*60}\n")
-    print("Note: Free AQICN API doesn't provide historical data")
-    print("We'll collect current data points to build history over time")
-    print(f"Please run this pipeline hourly to collect sufficient data\n")
-    
-    success = run_feature_pipeline()
-    
-    if success:
-        print("\n✓ First data point collected!")
-        print("💡 Set up GitHub Actions to run this hourly for historical data")
-    
-    return success
+    try:
+        if os.path.exists(log_file):
+            with open(log_file, 'r') as f:
+                logs = json.load(f)
+        else:
+            logs = []
+        
+        logs.append(pipeline_status)
+        
+        if len(logs) > 1000:
+            logs = logs[-1000:]
+        
+        with open(log_file, 'w') as f:
+            json.dump(logs, f, indent=2)
+        
+        logger.info("Pipeline log saved")
+    except Exception as e:
+        logger.warning(f"Failed to save log: {e}")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == 'backfill':
-        # Run backfill mode
-        days = int(sys.argv[2]) if len(sys.argv) > 2 else 7
-        backfill_historical_data(days)
-    else:
-        # Run normal pipeline
-        run_feature_pipeline()
+    run_feature_pipeline()

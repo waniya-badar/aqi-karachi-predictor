@@ -28,7 +28,7 @@ class FeatureEngineer:
         """
         try:
             if not raw_data or 'timestamp' not in raw_data:
-                print("✗ Invalid raw data provided")
+                print("Invalid raw data provided")
                 return None
             
             timestamp = raw_data['timestamp']
@@ -37,57 +37,48 @@ class FeatureEngineer:
             # Initialize features dictionary
             features = {
                 'timestamp': timestamp,
-                'date': timestamp.strftime('%Y-%m-%d'),  # Convert to string
+                'date': timestamp.strftime('%Y-%m-%d'),
             }
                         
-            # ===== TIME FEATURES =====
-            # These help the model understand temporal patterns
             features['hour'] = timestamp.hour
             features['day'] = timestamp.day
             features['month'] = timestamp.month
             features['year'] = timestamp.year
-            features['day_of_week'] = timestamp.weekday()  # 0=Monday, 6=Sunday
+            features['day_of_week'] = timestamp.weekday()
             features['is_weekend'] = 1 if timestamp.weekday() >= 5 else 0
             
-            # Time of day categories
             if 6 <= timestamp.hour < 12:
-                features['time_of_day'] = 1  # Morning
+                features['time_of_day'] = 1
             elif 12 <= timestamp.hour < 18:
-                features['time_of_day'] = 2  # Afternoon
+                features['time_of_day'] = 2
             elif 18 <= timestamp.hour < 22:
-                features['time_of_day'] = 3  # Evening
+                features['time_of_day'] = 3
             else:
-                features['time_of_day'] = 4  # Night
+                features['time_of_day'] = 4
             
-            # ===== TARGET VARIABLE =====
             features['aqi'] = raw_data.get('aqi', None)
             
-            # ===== POLLUTANT FEATURES =====
-            # Main pollutants that affect AQI
             features['pm25'] = raw_data.get('pm25', None)
             features['pm10'] = raw_data.get('pm10', None)
             features['o3'] = raw_data.get('o3', None)
             features['no2'] = raw_data.get('no2', None)
             
-            # Optional pollutants (may not always be available)
             features['so2'] = raw_data.get('so2', None)
             features['co'] = raw_data.get('co', None)
             
-            # ===== WEATHER FEATURES =====
             features['temperature'] = raw_data.get('temperature', None)
             features['humidity'] = raw_data.get('humidity', None)
             features['pressure'] = raw_data.get('pressure', None)
             features['wind_speed'] = raw_data.get('wind_speed', None)
             
-            # ===== LOCATION FEATURES =====
-            features['latitude'] = raw_data.get('latitude', 24.8607)  # Karachi default
+            features['latitude'] = raw_data.get('latitude', 24.8607)
             features['longitude'] = raw_data.get('longitude', 67.0011)
             
-            print(f"✓ Created {len(features)} features for {timestamp}")
+            print(f"Created {len(features)} features for {timestamp}")
             return features
             
         except Exception as e:
-            print(f"✗ Error creating features: {e}")
+            print(f"Error creating features: {e}")
             return None
     
     def add_lag_features(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -130,11 +121,11 @@ class FeatureEngineer:
                 df['aqi_change_1h'] = df['aqi'].diff(1)
                 df['aqi_change_6h'] = df['aqi'].diff(6)
             
-            print(f"✓ Added lag features to {len(df)} records")
+            print(f"Added lag features to {len(df)} records")
             return df
             
         except Exception as e:
-            print(f"✗ Error adding lag features: {e}")
+            print(f"Error adding lag features: {e}")
             return df
     
     def handle_missing_values(self, df: pd.DataFrame) -> pd.DataFrame:

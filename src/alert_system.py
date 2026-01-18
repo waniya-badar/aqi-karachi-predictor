@@ -84,23 +84,13 @@ class AlertSystem:
     
     def _console_alert(self, level: str, aqi: float, message: str):
         """Print alert to console"""
-        symbols = {
-            'hazardous': '🚨🚨🚨',
-            'very_unhealthy': '☠️☠️',
-            'unhealthy': '⚠️⚠️',
-            'moderate': 'ℹ️',
-            'good': '✅'
-        }
         
-        symbol = symbols.get(level, '⚠️')
+        level_text = level.upper().replace('_', ' ')
         
-        print(f"\n{'='*70}")
-        print(f"{symbol} AQI ALERT - {level.upper().replace('_', ' ')} {symbol}")
-        print(f"{'='*70}")
+        print(f"\nAQI Alert - {level_text}")
         print(f"Current AQI: {aqi:.0f}")
         print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"\n{message}")
-        print(f"{'='*70}\n")
+        print(f"\n{message}\n")
     
     def _log_alert(self, level: str, aqi: float, message: str):
         """Log alert to file"""

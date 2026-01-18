@@ -20,10 +20,9 @@ print("EXPLORATORY DATA ANALYSIS - KARACHI AQI")
 print("="*70)
 
 print("\n1. LOADING DATA FROM MONGODB")
-print("-"*70)
 
 db_handler = MongoDBHandler()
-df = db_handler.get_training_data(days=60)  # Last 60 days
+df = db_handler.get_training_data(days=60)
 
 if df is None or len(df) == 0:
     print("No data available. Run feature pipeline first.")
@@ -35,7 +34,6 @@ print(f"Features: {len(df.columns)} columns")
 
 
 print("\n2. BASIC STATISTICS")
-print("-"*70)
 
 print("\nDataset Shape:", df.shape)
 print("\nData Types:")
@@ -53,9 +51,7 @@ print("\nAQI Statistics:")
 print(df['aqi'].describe())
 
 print("\n3. TEMPORAL ANALYSIS")
-print("-"*70)
 
-# Create time-based features
 df['date'] = pd.to_datetime(df['timestamp']).dt.date
 df['hour'] = pd.to_datetime(df['timestamp']).dt.hour
 df['day_name'] = pd.to_datetime(df['timestamp']).dt.day_name()
@@ -75,7 +71,7 @@ plt.legend()
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.savefig('notebooks/plots/aqi_timeseries.png', dpi=300, bbox_inches='tight')
-print("✓ Saved: aqi_timeseries.png")
+print("Saved: aqi_timeseries.png")
 
 #Hourly Patterns
 plt.figure(figsize=(12, 6))
@@ -89,7 +85,7 @@ plt.grid(True, alpha=0.3)
 plt.xticks(range(0, 24))
 plt.tight_layout()
 plt.savefig('notebooks/plots/hourly_pattern.png', dpi=300, bbox_inches='tight')
-print("✓ Saved: hourly_pattern.png")
+print("Saved: hourly_pattern.png")
 
 #Day of Week Patterns
 plt.figure(figsize=(12, 6))
@@ -101,17 +97,13 @@ plt.ylabel('Average AQI')
 plt.title('Average AQI by Day of Week', fontsize=14, fontweight='bold')
 plt.xticks(rotation=45)
 plt.grid(True, alpha=0.3, axis='y')
-plt.tight_layout()
-plt.savefig('notebooks/plots/weekly_pattern.png', dpi=300, bbox_inches='tight')
-print("✓ Saved: weekly_pattern.png")
+print("Saved: weekly_pattern.png")
 
 print("\n4. POLLUTANT ANALYSIS")
-print("-"*70)
 
 pollutants = ['pm25', 'pm10', 'o3', 'no2']
 available_pollutants = [p for p in pollutants if p in df.columns]
 
-#Pollutants Correlation with AQI
 fig, axes = plt.subplots(2, 2, figsize=(14, 12))
 axes = axes.ravel()
 
@@ -133,7 +125,6 @@ plt.tight_layout()
 plt.savefig('notebooks/plots/pollutant_correlations.png', dpi=300, bbox_inches='tight')
 print("Saved: pollutant_correlations.png")
 
-#Pollutants Box Plot
 plt.figure(figsize=(12, 6))
 pollutant_data = df[available_pollutants].dropna()
 plt.boxplot([pollutant_data[p] for p in available_pollutants], 
@@ -146,13 +137,11 @@ plt.savefig('notebooks/plots/pollutants_boxplot.png', dpi=300, bbox_inches='tigh
 print("Saved: pollutants_boxplot.png")
 
 print("\n5. WEATHER CORRELATION ANALYSIS")
-print("-"*70)
 
 weather_vars = ['temperature', 'humidity', 'pressure', 'wind_speed']
 available_weather = [w for w in weather_vars if w in df.columns and df[w].notna().sum() > 10]
 
 if len(available_weather) > 0:
-    #Weather vs AQI
     fig, axes = plt.subplots(2, 2, figsize=(14, 12))
     axes = axes.ravel()
     
@@ -170,7 +159,6 @@ if len(available_weather) > 0:
     print("Saved: weather_correlations.png")
 
 print("\n6. CORRELATION MATRIX")
-print("-"*70)
 
 numerical_cols = df.select_dtypes(include=[np.number]).columns.tolist()
 numerical_cols = [col for col in numerical_cols if col not in ['timestamp', 'year']]
@@ -178,7 +166,6 @@ numerical_cols = [col for col in numerical_cols if col not in ['timestamp', 'yea
 if len(numerical_cols) > 5:
     corr_matrix = df[numerical_cols].corr()
     
-    # Heatmap
     plt.figure(figsize=(14, 12))
     sns.heatmap(corr_matrix, annot=True, fmt='.2f', cmap='coolwarm', 
                 center=0, square=True, linewidths=1, cbar_kws={"shrink": 0.8})
@@ -192,12 +179,9 @@ if len(numerical_cols) > 5:
     print(aqi_corr.head(10))
 
 print("\n7. AQI DISTRIBUTION ANALYSIS")
-print("-"*70)
 
-#AQI Histogram
 fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
-# Histogram
 axes[0].hist(df['aqi'], bins=30, color='steelblue', alpha=0.7, edgecolor='black')
 axes[0].axvline(df['aqi'].mean(), color='red', linestyle='--', 
                 label=f'Mean: {df["aqi"].mean():.1f}')
@@ -209,7 +193,6 @@ axes[0].set_title('AQI Distribution', fontweight='bold')
 axes[0].legend()
 axes[0].grid(True, alpha=0.3, axis='y')
 
-# Box plot
 axes[1].boxplot(df['aqi'], vert=True)
 axes[1].set_ylabel('AQI')
 axes[1].set_title('AQI Box Plot', fontweight='bold')
@@ -219,7 +202,6 @@ plt.tight_layout()
 plt.savefig('notebooks/plots/aqi_distribution.png', dpi=300, bbox_inches='tight')
 print("Saved: aqi_distribution.png")
 
-# AQI Categories Distribution
 aqi_categories = pd.cut(df['aqi'], 
                         bins=[0, 50, 100, 150, 200, 300, 500],
                         labels=['Good', 'Moderate', 'Unhealthy for Sensitive', 
@@ -236,46 +218,43 @@ plt.xticks(rotation=45, ha='right')
 plt.grid(True, alpha=0.3, axis='y')
 plt.tight_layout()
 plt.savefig('notebooks/plots/aqi_categories.png', dpi=300, bbox_inches='tight')
-print("✓ Saved: aqi_categories.png")
+print("Saved: aqi_categories.png")
 
 print("\n8. KEY INSIGHTS")
-print("-"*70)
 
-print(f"\n AQI Summary:")
-print(f"  • Average AQI: {df['aqi'].mean():.1f}")
-print(f"  • Median AQI: {df['aqi'].median():.1f}")
-print(f"  • Min AQI: {df['aqi'].min():.1f}")
-print(f"  • Max AQI: {df['aqi'].max():.1f}")
-print(f"  • Std Dev: {df['aqi'].std():.1f}")
+print(f"\nAQI Summary:")
+print(f"  Average AQI: {df['aqi'].mean():.1f}")
+print(f"  Median AQI: {df['aqi'].median():.1f}")
+print(f"  Min AQI: {df['aqi'].min():.1f}")
+print(f"  Max AQI: {df['aqi'].max():.1f}")
+print(f"  Std Dev: {df['aqi'].std():.1f}")
 
-print(f"\n Temporal Patterns:")
+print(f"\nTemporal Patterns:")
 worst_hour = df.groupby('hour')['aqi'].mean().idxmax()
 best_hour = df.groupby('hour')['aqi'].mean().idxmin()
-print(f"  • Worst hour: {worst_hour}:00 (AQI: {df.groupby('hour')['aqi'].mean()[worst_hour]:.1f})")
-print(f"  • Best hour: {best_hour}:00 (AQI: {df.groupby('hour')['aqi'].mean()[best_hour]:.1f})")
+print(f"  Worst hour: {worst_hour}:00 (AQI: {df.groupby('hour')['aqi'].mean()[worst_hour]:.1f})")
+print(f"  Best hour: {best_hour}:00 (AQI: {df.groupby('hour')['aqi'].mean()[best_hour]:.1f})")
 
 if 'day_name' in df.columns:
     worst_day = df.groupby('day_name')['aqi'].mean().idxmax()
     best_day = df.groupby('day_name')['aqi'].mean().idxmin()
-    print(f"  • Worst day: {worst_day}")
-    print(f"  • Best day: {best_day}")
+    print(f"  Worst day: {worst_day}")
+    print(f"  Best day: {best_day}")
 
-print(f"\n Health Concerns:")
+print(f"\nHealth Concerns:")
 unhealthy_days = (df['aqi'] > 150).sum()
 hazardous_days = (df['aqi'] > 300).sum()
-print(f"  • Hours with unhealthy AQI (>150): {unhealthy_days} ({unhealthy_days/len(df)*100:.1f}%)")
-print(f"  • Hours with hazardous AQI (>300): {hazardous_days} ({hazardous_days/len(df)*100:.1f}%)")
+print(f"  Hours with unhealthy AQI (>150): {unhealthy_days} ({unhealthy_days/len(df)*100:.1f}%)")
+print(f"  Hours with hazardous AQI (>300): {hazardous_days} ({hazardous_days/len(df)*100:.1f}%)")
 
 if len(available_pollutants) > 0:
-    print(f"\n🔬 Top Pollutant Correlations with AQI:")
+    print(f"\nTop Pollutant Correlations with AQI:")
     for pollutant in available_pollutants:
         corr = df[[pollutant, 'aqi']].corr().iloc[0, 1]
-        print(f"  • {pollutant.upper()}: {corr:.3f}")
+        print(f"  {pollutant.upper()}: {corr:.3f}")
 
 print("\n9. EXPORTING SUMMARY")
-print("-"*70)
 
-# Create summary report
 summary = {
     'Total Records': len(df),
     'Date Range': f"{df['timestamp'].min()} to {df['timestamp'].max()}",
@@ -290,13 +269,10 @@ summary = {
 
 summary_df = pd.DataFrame([summary])
 summary_df.to_csv('notebooks/eda_summary.csv', index=False)
-print("✓ Saved: eda_summary.csv")
+print("Saved: eda_summary.csv")
 
-# Close connection
 db_handler.close()
 
-print("\n" + "="*70)
-print("✓ EDA COMPLETE!")
-print("="*70)
+print("\nEDA Complete!")
 print("\nAll plots saved to: notebooks/plots/")
 print("Summary saved to: notebooks/eda_summary.csv")

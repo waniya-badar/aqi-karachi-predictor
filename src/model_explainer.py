@@ -129,7 +129,7 @@ class ModelExplainer:
         
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"✓ Plot saved to {save_path}")
+            print(f"Plot saved to {save_path}")
         
         plt.show()
     
@@ -309,7 +309,7 @@ def run_explainability_analysis():
         explainer.generate_explanation_report(X_test, output_dir)
     
     db_handler.close()
-    print("\n✓ Explainability analysis complete!")
+    print("\nExplainability analysis complete!")
 
 
 if __name__ == "__main__":

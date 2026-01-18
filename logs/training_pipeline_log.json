@@ -1,0 +1,31 @@
+[
+  {
+    "start_time": "2026-01-18T16:18:45.364427",
+    "steps": {
+      "data_check": "SUCCESS",
+      "data_fetch": "SUCCESS"
+    },
+    "models": {},
+    "success": false,
+    "error": "'ModelTrainer' object has no attribute 'train_all_models'",
+    "total_records": 2163,
+    "training_records": 2163,
+    "end_time": "2026-01-18T16:18:51.248752"
+  },
+  {
+    "start_time": "2026-01-18T19:10:34.177845",
+    "steps": {
+      "data_check": "SUCCESS",
+      "data_fetch": "SUCCESS",
+      "training": "SUCCESS",
+      "metrics": "WARNING"
+    },
+    "models": {},
+    "success": true,
+    "error": null,
+    "total_records": 2163,
+    "training_records": 2163,
+    "models_trained": 3,
+    "end_time": "2026-01-18T19:10:46.527902"
+  }
+]
