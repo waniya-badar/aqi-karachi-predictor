@@ -1,0 +1,188 @@
+name: Daily Model Training Pipeline
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  model-training:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Set environment variables
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
+        run: |
+          echo "MONGODB_URI=$MONGODB_URI" >> $GITHUB_ENV
+          echo "MONGODB_DB_NAME=$MONGODB_DB_NAME" >> $GITHUB_ENV
+      
+      - name: Prepare training data
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          from src.mongodb_handler import MongoDBHandler
+          
+          db = MongoDBHandler()
+          df = db.get_training_data(days=120)
+          
+          if df is None or len(df) == 0:
+              print('No training data available')
+              sys.exit(1)
+          
+          print(f'Training data prepared: {len(df)} records')
+          db.close()
+          "
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
+      
+      - name: Run model training
+        run: |
+          python pipelines/training_pipeline.py
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
+      
+      - name: Verify models saved
+        run: |
+          python -c "
+          import os
+          import json
+          
+          model_dir = 'models/saved_models'
+          models = ['ridge_latest.pkl', 'gradient_boosting_latest.pkl', 'random_forest_latest.pkl']
+          
+          all_exist = all(os.path.exists(os.path.join(model_dir, m)) for m in models)
+          
+          if all_exist:
+              print('All models saved successfully')
+              
+              with open(os.path.join(model_dir, 'model_registry.json'), 'r') as f:
+                  registry = json.load(f)
+                  for model_name, metrics in registry.items():
+                      if 'r2_score' in metrics:
+                          print(f'  {model_name}: R² = {metrics[\"r2_score\"]:.4f}')
+          else:
+              print('Some models are missing')
+              exit(1)
+          "
+      
+      - name: Run model evaluation
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          from src.mongodb_handler import MongoDBHandler
+          import joblib
+          from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+          import numpy as np
+          
+          print('\\n=== MODEL EVALUATION ===\\n')
+          
+          # Load data
+          db = MongoDBHandler()
+          df = db.get_training_data(days=30)
+          
+          if df is None or len(df) < 100:
+              print('Insufficient test data')
+              sys.exit(1)
+          
+          # Prepare test features (simplified for demo)
+          X_test = df[[c for c in df.columns if c != 'aqi' and c != 'timestamp']].fillna(0).values
+          y_test = df['aqi'].values
+          
+          # Load models
+          models = {
+              'Ridge': joblib.load('models/saved_models/ridge_latest.pkl'),
+              'Gradient Boosting': joblib.load('models/saved_models/gradient_boosting_latest.pkl'),
+              'Random Forest': joblib.load('models/saved_models/random_forest_latest.pkl')
+          }
+          
+          # Evaluate
+          for name, model in models.items():
+              try:
+                  y_pred = model.predict(X_test[:, :X_test.shape[1]])
+                  r2 = r2_score(y_test, y_pred)
+                  mae = mean_absolute_error(y_test, y_pred)
+                  rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+                  
+                  print(f'{name}:')
+                  print(f'  R² Score: {r2:.4f}')
+                  print(f'  MAE: {mae:.4f}')
+                  print(f'  RMSE: {rmse:.4f}')
+                  print()
+              except Exception as e:
+                  print(f'{name}: Error - {e}')
+          
+          db.close()
+          "
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
+      
+      - name: Generate model report
+        if: always()
+        run: |
+          python -c "
+          import json
+          import os
+          from datetime import datetime
+          
+          report = {
+              'timestamp': datetime.utcnow().isoformat(),
+              'status': 'completed',
+              'models': {}
+          }
+          
+          if os.path.exists('models/saved_models/model_registry.json'):
+              with open('models/saved_models/model_registry.json', 'r') as f:
+                  report['models'] = json.load(f)
+          
+          print(json.dumps(report, indent=2))
+          "
+      
+      - name: Create job summary
+        if: always()
+        run: |
+          echo "## Daily Model Training Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timestamp**: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Models Trained**: Ridge, Gradient Boosting, Random Forest" >> $GITHUB_STEP_SUMMARY
+          echo "- **Data Window**: Last 120 days" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Upload model artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: trained-models
+          path: models/saved_models/
+          retention-days: 30
+      
+      - name: Create release on success
+        if: success()
+        uses: softprops/action-gh-release@v1
+        with:
+          files: models/saved_models/*.pkl
+          tag_name: model-${{ github.run_number }}
+          body: "Daily model training completed successfully"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
