@@ -64,6 +64,45 @@ def load_model(model_name='random_forest'):
 
 
 @st.cache_resource
+def load_model_registry():
+    """Load model registry to get best model and metrics"""
+    try:
+        registry_path = 'models/model_registry.json'
+        with open(registry_path, 'r') as f:
+            registry = json.load(f)
+        
+        # Registry is a list of training runs - get the latest
+        if isinstance(registry, list) and len(registry) > 0:
+            latest_run = registry[-1]
+            return latest_run
+        return None
+    except Exception as e:
+        st.warning(f"Could not load model registry: {e}")
+        return None
+
+
+def get_best_model_from_registry():
+    """Determine the best model from the registry based on test R2 score"""
+    registry = load_model_registry()
+    
+    if registry and 'models' in registry:
+        models = registry['models']
+        best_model = None
+        best_r2 = -1
+        
+        for model_name, metrics in models.items():
+            test_r2 = metrics.get('test_r2', 0)
+            if test_r2 > best_r2:
+                best_r2 = test_r2
+                best_model = model_name
+        
+        return best_model, models
+    
+    # Fallback to default
+    return 'ridge', None
+
+
+@st.cache_resource
 def load_scaler():
     """Load feature scaler"""
     try:
@@ -224,61 +263,107 @@ def main():
     st.markdown('<h1 class="main-header">Karachi AQI Predictor</h1>', unsafe_allow_html=True)
     st.markdown("### Real-time Air Quality Index Prediction for the Next 3 Days")
     
+    # Load best model info from registry
+    best_model_name, registry_models = get_best_model_from_registry()
+    
     st.sidebar.title("SETTINGS & MODEL SELECTION")
     
-    st.sidebar.markdown("### Select Prediction Model")
-    st.sidebar.markdown("**Ridge Regression is the BEST MODEL (Default)**")
+    # Show workflow status
+    st.sidebar.markdown("### CI/CD Pipeline Status")
+    registry = load_model_registry()
+    if registry:
+        last_training = registry.get('timestamp', 'Unknown')
+        st.sidebar.success(f"Last Training: {last_training}")
+    else:
+        st.sidebar.warning("No training data available")
     
-    # Model options with performance indicators
-    model_options = {
-        "Ridge Regression (BEST - R²=0.9947)": "ridge",
-        "Gradient Boosting (R²=0.9548)": "gradient_boosting",
-        "Random Forest (R²=0.9059)": "random_forest"
-    }
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Select Prediction Model")
+    
+    # Build model options dynamically from registry
+    if registry_models:
+        model_options = {}
+        model_details = {}
+        
+        for model_key, metrics in registry_models.items():
+            display_name = metrics.get('model_name', model_key.replace('_', ' ').title())
+            test_r2 = metrics.get('test_r2', 0)
+            is_best = model_key == best_model_name
+            
+            label = f"{display_name} (R²={test_r2:.4f})"
+            if is_best:
+                label = f"{display_name} (BEST - R²={test_r2:.4f})"
+            
+            model_options[label] = model_key
+            model_details[model_key] = {
+                "name": display_name,
+                "train_r2": metrics.get('train_r2', 0),
+                "test_r2": test_r2,
+                "rmse": metrics.get('test_rmse', 0),
+                "mae": metrics.get('test_mae', 0),
+                "status": "BEST PERFORMER" if is_best else "Available",
+                "color": "green" if is_best else "blue"
+            }
+        
+        # Sort to put best model first
+        sorted_options = dict(sorted(
+            model_options.items(), 
+            key=lambda x: 0 if x[1] == best_model_name else 1
+        ))
+        
+        st.sidebar.markdown(f"**{model_details[best_model_name]['name']} is the BEST MODEL (Default)**")
+    else:
+        # Fallback to hardcoded options
+        sorted_options = {
+            "Ridge Regression (BEST - R²=0.9947)": "ridge",
+            "Gradient Boosting (R²=0.9548)": "gradient_boosting",
+            "Random Forest (R²=0.9059)": "random_forest"
+        }
+        model_details = {
+            "ridge": {
+                "name": "Ridge Regression",
+                "train_r2": 0.9911,
+                "test_r2": 0.9947,
+                "rmse": 1.24,
+                "mae": 1.01,
+                "status": "BEST PERFORMER",
+                "color": "green"
+            },
+            "gradient_boosting": {
+                "name": "Gradient Boosting",
+                "train_r2": 0.9935,
+                "test_r2": 0.9548,
+                "rmse": 3.62,
+                "mae": 2.87,
+                "status": "Strong Performance",
+                "color": "blue"
+            },
+            "random_forest": {
+                "name": "Random Forest",
+                "train_r2": 0.9129,
+                "test_r2": 0.9059,
+                "rmse": 5.22,
+                "mae": 5.06,
+                "status": "Good Performance",
+                "color": "orange"
+            }
+        }
+        st.sidebar.markdown("**Ridge Regression is the BEST MODEL (Default)**")
     
     selected_model_display = st.sidebar.selectbox(
         "Choose a model for predictions:",
-        list(model_options.keys()),
-        index=0  # Ridge is default (index 0)
+        list(sorted_options.keys()),
+        index=0  # Best model is default (index 0)
     )
     
-    model_choice = model_options[selected_model_display]
+    model_choice = sorted_options[selected_model_display]
     
     # Display model info
     st.sidebar.markdown("---")
     st.sidebar.markdown("### SELECTED MODEL DETAILS")
     
-    model_details = {
-        "ridge": {
-            "name": "Ridge Regression",
-            "train_r2": 0.9911,
-            "test_r2": 0.9947,
-            "rmse": 1.24,
-            "mae": 1.01,
-            "status": "BEST PERFORMER",
-            "color": "green"
-        },
-        "gradient_boosting": {
-            "name": "Gradient Boosting",
-            "train_r2": 0.9935,
-            "test_r2": 0.9548,
-            "rmse": 3.62,
-            "mae": 2.87,
-            "status": "Strong Performance",
-            "color": "blue"
-        },
-        "random_forest": {
-            "name": "Random Forest",
-            "train_r2": 0.9129,
-            "test_r2": 0.9059,
-            "rmse": 5.22,
-            "mae": 5.06,
-            "status": "Good Performance",
-            "color": "orange"
-        }
-    }
-    
-    selected_info = model_details[model_choice]
+    # Use the model_details already built above (from registry or fallback)
+    selected_info = model_details.get(model_choice, model_details.get(list(model_details.keys())[0]))
     
     col1, col2 = st.sidebar.columns(2)
     with col1:
