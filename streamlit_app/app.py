@@ -107,8 +107,9 @@ def create_aqi_gauge(aqi_value):
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=aqi_value,
+        number={'font': {'size': 48, 'color': color}},
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "Current AQI", 'font': {'size': 20}},
+        title={'text': f"Current AQI: {int(aqi_value)}", 'font': {'size': 20}},
         gauge={
             'axis': {'range': [None, 500], 'tickwidth': 1},
             'bar': {'color': color},
@@ -128,7 +129,7 @@ def create_aqi_gauge(aqi_value):
         }
     ))
     
-    fig.update_layout(height=280)
+    fig.update_layout(height=300)
     return fig, category
 
 
@@ -280,10 +281,10 @@ def main():
     st.sidebar.markdown("### Model Metrics")
     info = model_details[model_choice]
     
-    col1, col2, col3 = st.sidebar.columns(3)
-    col1.metric("R²", f"{info['test_r2']:.4f}")
-    col2.metric("MAE", f"{info['mae']:.2f}")
-    col3.metric("RMSE", f"{info['rmse']:.2f}")
+    st.sidebar.metric("R\u00b2 Score", f"{info['test_r2']}")
+    col1, col2 = st.sidebar.columns(2)
+    col1.metric("MAE", f"{info['mae']:.2f}")
+    col2.metric("RMSE", f"{info['rmse']:.2f}")
     
     st.sidebar.markdown("---")
     if st.sidebar.button("Refresh Data", use_container_width=True):
