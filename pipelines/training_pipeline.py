@@ -92,9 +92,9 @@ def run_training_pipeline(min_days: int = 7, data_days: int = 120):
         pipeline_status['steps']['data_fetch'] = 'SUCCESS'
         pipeline_status['training_records'] = len(df)
         
-        # Step 3: Train models
-        logger.info("Step 3: Training models...")
-        trained_models = trainer.train_all_models(df)
+        # Step 3: Train models (with MongoDB storage)
+        logger.info("Step 3: Training models and saving to MongoDB...")
+        trained_models = trainer.train_all_models(df, db_handler=db_handler)
         
         if not trained_models or len(trained_models) == 0:
             logger.error("Failed to train models")
@@ -107,20 +107,31 @@ def run_training_pipeline(min_days: int = 7, data_days: int = 120):
         pipeline_status['steps']['training'] = 'SUCCESS'
         pipeline_status['models_trained'] = len(trained_models)
         
-        # Step 4: Save model metrics
-        logger.info("Step 4: Saving model metrics...")
+        # Step 4: Verify models in MongoDB
+        logger.info("Step 4: Verifying models in MongoDB...")
         try:
-            with open('models/saved_models/model_registry.json', 'r') as f:
-                registry = json.load(f)
+            stored_models = db_handler.get_all_models_metadata()
+            best_model = db_handler.get_best_model()
             
-            for model_name, metrics in registry.items():
-                logger.info(f"{model_name}: R² = {metrics.get('r2_score', 'N/A'):.4f}")
-                pipeline_status['models'][model_name] = metrics
-            
-            pipeline_status['steps']['metrics'] = 'SUCCESS'
+            if stored_models:
+                logger.info(f"Verified {len(stored_models)} models in MongoDB:")
+                for m in stored_models:
+                    metrics = m.get('metrics', {})
+                    is_best = " (BEST)" if m.get('is_best') else ""
+                    logger.info(f"  - {m['model_name']}: R²={metrics.get('test_r2', 0):.4f}{is_best}")
+                    pipeline_status['models'][m['model_name']] = metrics
+                
+                if best_model:
+                    pipeline_status['best_model'] = best_model['model_name']
+                
+                pipeline_status['steps']['verification'] = 'SUCCESS'
+            else:
+                logger.warning("No models found in MongoDB after training")
+                pipeline_status['steps']['verification'] = 'WARNING'
+                
         except Exception as e:
-            logger.warning(f"Failed to load metrics: {e}")
-            pipeline_status['steps']['metrics'] = 'WARNING'
+            logger.warning(f"Failed to verify models: {e}")
+            pipeline_status['steps']['verification'] = 'WARNING'
         
         pipeline_status['success'] = True
         pipeline_status['end_time'] = datetime.utcnow().isoformat()

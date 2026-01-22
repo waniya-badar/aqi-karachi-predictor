@@ -1,4 +1,4 @@
-name: Daily Model Training Pipeline
+name: Daily Model Training Pipeline (Cloud)
 
 on:
   schedule:
@@ -10,8 +10,6 @@ jobs:
   model-training:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    permissions:
-      contents: write  # Required for creating releases
     
     steps:
       - name: Checkout code
@@ -28,180 +26,100 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
-      - name: Set environment variables
-        env:
-          MONGODB_URI: ${{ secrets.MONGODB_URI }}
-          MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
-        run: |
-          echo "MONGODB_URI=$MONGODB_URI" >> $GITHUB_ENV
-          echo "MONGODB_DB_NAME=$MONGODB_DB_NAME" >> $GITHUB_ENV
-      
-      - name: Prepare training data
+      - name: Verify MongoDB connection
         run: |
           python -c "
           import sys
           sys.path.insert(0, '.')
           from src.mongodb_handler import MongoDBHandler
           
+          print('Connecting to MongoDB...')
           db = MongoDBHandler()
-          df = db.get_training_data(days=120)
           
-          if df is None or len(df) == 0:
-              print('No training data available')
+          # Check data availability
+          total_records = db.db.features.count_documents({})
+          print(f'Total feature records: {total_records}')
+          
+          if total_records < 100:
+              print(f'ERROR: Insufficient data ({total_records} < 100)')
               sys.exit(1)
           
-          print(f'Training data prepared: {len(df)} records')
+          # Check existing models
+          models = db.get_all_models_metadata()
+          print(f'Existing models in MongoDB: {len(models)}')
+          for m in models:
+              print(f'  - {m[\"model_name\"]}: R²={m.get(\"metrics\", {}).get(\"test_r2\", \"N/A\")}')
+          
           db.close()
+          print('MongoDB connection verified!')
           "
         env:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
       
-      - name: Run model training
+      - name: Run model training (saves to MongoDB)
         run: |
           python pipelines/training_pipeline.py
         env:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
       
-      - name: Verify models saved
-        run: |
-          python -c "
-          import os
-          import json
-          
-          model_dir = 'models/saved_models'
-          registry_path = 'models/model_registry.json'
-          models = ['ridge_latest.pkl', 'gradient_boosting_latest.pkl', 'random_forest_latest.pkl']
-          
-          all_exist = all(os.path.exists(os.path.join(model_dir, m)) for m in models)
-          
-          if all_exist:
-              print('All models saved successfully')
-              
-              if os.path.exists(registry_path):
-                  with open(registry_path, 'r') as f:
-                      registry = json.load(f)
-                      # Registry is a list of entries; get the latest entry
-                      if isinstance(registry, list) and len(registry) > 0:
-                          latest = registry[-1]
-                          if 'models' in latest:
-                              for model_name, metrics in latest['models'].items():
-                                  if 'test_r2' in metrics:
-                                      print(f'  {model_name}: R² = {metrics[\"test_r2\"]:.4f}')
-                      elif isinstance(registry, dict):
-                          for model_name, metrics in registry.items():
-                              if 'r2_score' in metrics:
-                                  print(f'  {model_name}: R² = {metrics[\"r2_score\"]:.4f}')
-              else:
-                  print('Registry file not found at', registry_path)
-          else:
-              print('Some models are missing')
-              exit(1)
-          "
-      
-      - name: Run model evaluation
+      - name: Verify models in MongoDB
         run: |
           python -c "
           import sys
           sys.path.insert(0, '.')
           from src.mongodb_handler import MongoDBHandler
-          import joblib
-          from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-          import numpy as np
           
-          print('\\n=== MODEL EVALUATION ===\\n')
-          
-          # Load data
+          print('Verifying models in MongoDB...')
           db = MongoDBHandler()
-          df = db.get_training_data(days=30)
           
-          if df is None or len(df) < 100:
-              print('Insufficient test data')
+          # Get all models
+          models = db.get_all_models_metadata()
+          
+          if not models or len(models) < 3:
+              print(f'ERROR: Expected 3 models, found {len(models)}')
               sys.exit(1)
           
-          # Prepare test features (simplified for demo)
-          X_test = df[[c for c in df.columns if c != 'aqi' and c != 'timestamp']].fillna(0).values
-          y_test = df['aqi'].values
+          print(f'✅ All {len(models)} models saved to MongoDB:')
+          for m in models:
+              metrics = m.get('metrics', {})
+              is_best = ' (BEST)' if m.get('is_best') else ''
+              print(f'  - {m[\"model_name\"]}: R²={metrics.get(\"test_r2\", 0):.4f}, RMSE={metrics.get(\"test_rmse\", 0):.2f}{is_best}')
           
-          # Load models
-          models = {
-              'Ridge': joblib.load('models/saved_models/ridge_latest.pkl'),
-              'Gradient Boosting': joblib.load('models/saved_models/gradient_boosting_latest.pkl'),
-              'Random Forest': joblib.load('models/saved_models/random_forest_latest.pkl')
-          }
+          # Get best model
+          best = db.get_best_model()
+          if best:
+              print(f'\\n⭐ Best Model: {best[\"model_name\"]}')
+              print(f'   Test R²: {best.get(\"metrics\", {}).get(\"test_r2\", 0):.4f}')
           
-          # Evaluate
-          for name, model in models.items():
-              try:
-                  y_pred = model.predict(X_test[:, :X_test.shape[1]])
-                  r2 = r2_score(y_test, y_pred)
-                  mae = mean_absolute_error(y_test, y_pred)
-                  rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-                  
-                  print(f'{name}:')
-                  print(f'  R² Score: {r2:.4f}')
-                  print(f'  MAE: {mae:.4f}')
-                  print(f'  RMSE: {rmse:.4f}')
-                  print()
-              except Exception as e:
-                  print(f'{name}: Error - {e}')
+          # Get training history
+          history = db.get_training_history(limit=3)
+          print(f'\\n📜 Recent Training History: {len(history)} runs')
+          for h in history:
+              print(f'  - {h.get(\"timestamp\", \"Unknown\")}')
           
           db.close()
+          print('\\n✅ Model verification complete!')
           "
         env:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
       
-      - name: Generate model report
-        if: always()
-        run: |
-          python -c "
-          import json
-          import os
-          from datetime import datetime
-          
-          report = {
-              'timestamp': datetime.utcnow().isoformat(),
-              'status': 'completed',
-              'models': {}
-          }
-          
-          if os.path.exists('models/model_registry.json'):
-              with open('models/model_registry.json', 'r') as f:
-                  data = json.load(f)
-                  # Registry is a list; get latest entry's models
-                  if isinstance(data, list) and len(data) > 0:
-                      report['models'] = data[-1].get('models', {})
-                  elif isinstance(data, dict):
-                      report['models'] = data
-          
-          print(json.dumps(report, indent=2))
-          "
-      
       - name: Create job summary
         if: always()
         run: |
-          echo "## Daily Model Training Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Timestamp**: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-          echo "- **Models Trained**: Ridge, Gradient Boosting, Random Forest" >> $GITHUB_STEP_SUMMARY
-          echo "- **Data Window**: Last 120 days" >> $GITHUB_STEP_SUMMARY
-      
-      - name: Upload model artifacts
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: trained-models
-          path: models/saved_models/
-          retention-days: 30
-      
-      - name: Create release on success
-        if: success()
-        uses: softprops/action-gh-release@v1
-        with:
-          files: models/saved_models/*.pkl
-          tag_name: model-${{ github.run_number }}
-          body: "Daily model training completed successfully"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "## 🤖 Daily Model Training Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Timestamp** | $(date -u +'%Y-%m-%d %H:%M:%S UTC') |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Storage** | ☁️ MongoDB Cloud |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Models Trained** | Ridge, Gradient Boosting, Random Forest |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Data Window** | Last 120 days |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ☁️ Serverless Architecture" >> $GITHUB_STEP_SUMMARY
+          echo "- Models stored directly in MongoDB (no local files)" >> $GITHUB_STEP_SUMMARY
+          echo "- Streamlit app loads models from MongoDB on demand" >> $GITHUB_STEP_SUMMARY
+          echo "- Fully automated, no manual intervention needed" >> $GITHUB_STEP_SUMMARY

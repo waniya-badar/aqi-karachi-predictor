@@ -193,6 +193,199 @@ class MongoDBHandler:
         if self.client:
             self.client.close()
             print("MongoDB connection closed")
+    
+    # ==================== MODEL STORAGE METHODS ====================
+    
+    def save_model(self, model_name: str, model_binary: bytes, 
+                   scaler_binary: bytes, feature_names: List[str],
+                   metrics: Dict, is_best: bool = False) -> bool:
+        """
+        Save a trained model to MongoDB
+        
+        Args:
+            model_name: Name of the model (e.g., 'random_forest')
+            model_binary: Pickled model bytes
+            scaler_binary: Pickled scaler bytes  
+            feature_names: List of feature names used
+            metrics: Model performance metrics
+            is_best: Whether this is the best performing model
+        
+        Returns:
+            bool: True if successful
+        """
+        try:
+            model_doc = {
+                'model_name': model_name,
+                'model_binary': model_binary,
+                'scaler_binary': scaler_binary,
+                'feature_names': feature_names,
+                'metrics': metrics,
+                'is_best': is_best,
+                'trained_at': datetime.utcnow(),
+                'version': datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            }
+            
+            # Upsert - update if exists, insert if not
+            self.db.models.update_one(
+                {'model_name': model_name},
+                {'$set': model_doc},
+                upsert=True
+            )
+            
+            print(f"✅ Saved model '{model_name}' to MongoDB" + (" (BEST)" if is_best else ""))
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error saving model '{model_name}': {e}")
+            return False
+    
+    def save_all_models(self, models_data: List[Dict]) -> bool:
+        """
+        Save all trained models to MongoDB
+        
+        Args:
+            models_data: List of dicts with model_name, model_binary, scaler_binary, 
+                        feature_names, metrics, is_best
+        
+        Returns:
+            bool: True if all successful
+        """
+        try:
+            # Also save a training run record
+            training_run = {
+                'timestamp': datetime.utcnow(),
+                'models': {},
+                'best_model': None
+            }
+            
+            for model_data in models_data:
+                success = self.save_model(
+                    model_name=model_data['model_name'],
+                    model_binary=model_data['model_binary'],
+                    scaler_binary=model_data['scaler_binary'],
+                    feature_names=model_data['feature_names'],
+                    metrics=model_data['metrics'],
+                    is_best=model_data.get('is_best', False)
+                )
+                
+                if not success:
+                    return False
+                
+                # Add to training run record (without binary data)
+                training_run['models'][model_data['model_name']] = model_data['metrics']
+                if model_data.get('is_best'):
+                    training_run['best_model'] = model_data['model_name']
+            
+            # Save training run to history collection
+            self.db.training_history.insert_one(training_run)
+            print(f"✅ Training run saved to history")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error saving models: {e}")
+            return False
+    
+    def get_model(self, model_name: str) -> Optional[Dict]:
+        """
+        Retrieve a model from MongoDB
+        
+        Args:
+            model_name: Name of model to retrieve
+        
+        Returns:
+            Dict with model_binary, scaler_binary, feature_names, metrics
+        """
+        try:
+            model_doc = self.db.models.find_one({'model_name': model_name})
+            
+            if model_doc:
+                model_doc.pop('_id', None)
+                return model_doc
+            
+            print(f"Model '{model_name}' not found in database")
+            return None
+            
+        except Exception as e:
+            print(f"Error retrieving model '{model_name}': {e}")
+            return None
+    
+    def get_best_model(self) -> Optional[Dict]:
+        """
+        Get the best performing model
+        
+        Returns:
+            Dict with model data or None
+        """
+        try:
+            model_doc = self.db.models.find_one({'is_best': True})
+            
+            if model_doc:
+                model_doc.pop('_id', None)
+                return model_doc
+            
+            # Fallback: get model with highest test_r2
+            models = list(self.db.models.find())
+            if models:
+                best = max(models, key=lambda x: x.get('metrics', {}).get('test_r2', 0))
+                best.pop('_id', None)
+                return best
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error retrieving best model: {e}")
+            return None
+    
+    def get_all_models_metadata(self) -> List[Dict]:
+        """
+        Get metadata for all stored models (without binary data)
+        
+        Returns:
+            List of model metadata dicts
+        """
+        try:
+            models = self.db.models.find({}, {
+                'model_binary': 0, 
+                'scaler_binary': 0
+            })
+            
+            result = []
+            for model in models:
+                model.pop('_id', None)
+                result.append(model)
+            
+            return result
+            
+        except Exception as e:
+            print(f"Error retrieving models metadata: {e}")
+            return []
+    
+    def get_training_history(self, limit: int = 10) -> List[Dict]:
+        """
+        Get recent training history
+        
+        Args:
+            limit: Max number of records to return
+        
+        Returns:
+            List of training run records
+        """
+        try:
+            history = self.db.training_history.find().sort(
+                'timestamp', DESCENDING
+            ).limit(limit)
+            
+            result = []
+            for record in history:
+                record.pop('_id', None)
+                result.append(record)
+            
+            return result
+            
+        except Exception as e:
+            print(f"Error retrieving training history: {e}")
+            return []
 
 
 if __name__ == "__main__":
@@ -201,4 +394,12 @@ if __name__ == "__main__":
     print(f"\nDatabase Statistics:")
     print(f"Total Records: {stats.get('total_records', 0)}")
     print(f"Date Range: {stats.get('date_range_days', 0)} days")
+    
+    # Check models
+    models = handler.get_all_models_metadata()
+    print(f"\nStored Models: {len(models)}")
+    for m in models:
+        print(f"  - {m['model_name']}: R²={m.get('metrics', {}).get('test_r2', 'N/A'):.4f}" + 
+              (" (BEST)" if m.get('is_best') else ""))
+    
     handler.close()

@@ -1,6 +1,7 @@
 """
 Model Trainer - Trains ML models for AQI prediction
 Implements 3 models: Random Forest, Gradient Boosting, and Ridge Regression
+Models are saved to MongoDB for cloud-based serverless deployment
 """
 
 import os
@@ -25,9 +26,27 @@ class ModelTrainer:
         self.models_dir = models_dir
         os.makedirs(models_dir, exist_ok=True)
         
-        # Define feature columns (excluding target and metadata)
-        self.exclude_cols = ['aqi', 'timestamp', 'date', '_id', 'inserted_at', 
-                             'station_name', 'latitude', 'longitude']
+        # Define columns to EXCLUDE from features
+        # IMPORTANT: Exclude pollutant concentrations (pm25, pm10, etc.) as they have 
+        # near-perfect correlation with AQI (AQI is calculated from these values)
+        # This would cause data leakage and artificially high R² scores
+        self.exclude_cols = [
+            'aqi',              # Target variable
+            'timestamp',        # Metadata
+            'date',             # Metadata
+            '_id',              # MongoDB ID
+            'inserted_at',      # Metadata
+            'station_name',     # Metadata
+            'latitude',         # Static location
+            'longitude',        # Static location
+            # Pollutant concentrations - EXCLUDE to prevent data leakage
+            'pm25',             # Highly correlated with AQI (r=0.97)
+            'pm10',             # Highly correlated with AQI
+            'o3',               # Component of AQI calculation
+            'no2',              # Component of AQI calculation
+            'so2',              # Component of AQI calculation
+            'co',               # Component of AQI calculation
+        ]
         
         self.scaler = StandardScaler()
         self.models = {}
@@ -48,14 +67,36 @@ class ModelTrainer:
         print(f"\n=== Preparing Data ===")
         print(f"Total records: {len(df)}")
         
+        # Sort by timestamp first
+        df = df.sort_values('timestamp').reset_index(drop=True)
+        
+        # Add lag features for AQI (previous AQI values are legitimate predictors)
+        print("Adding AQI lag features...")
+        lag_periods = [1, 3, 6, 12, 24]  # Hours ago
+        for lag in lag_periods:
+            df[f'aqi_lag_{lag}h'] = df[target_col].shift(lag)
+        
+        # Add rolling statistics
+        df['aqi_rolling_mean_6h'] = df[target_col].rolling(window=6, min_periods=1).mean().shift(1)
+        df['aqi_rolling_mean_12h'] = df[target_col].rolling(window=12, min_periods=1).mean().shift(1)
+        df['aqi_rolling_mean_24h'] = df[target_col].rolling(window=24, min_periods=1).mean().shift(1)
+        df['aqi_rolling_std_24h'] = df[target_col].rolling(window=24, min_periods=1).std().shift(1)
+        
+        # Add change rate
+        df['aqi_change_1h'] = df[target_col].diff(1).shift(1)
+        df['aqi_change_6h'] = df[target_col].diff(6).shift(1)
+        
+        # Remove first 24 rows (no lag data available)
+        df = df.iloc[24:].copy()
+        
         # Remove records with missing target
         df = df[df[target_col].notna()].copy()
-        print(f"Records with valid AQI: {len(df)}")
+        print(f"Records with valid AQI after lag processing: {len(df)}")
         
-        # Select feature columns
+        # Select feature columns (exclude target and metadata)
         feature_cols = [col for col in df.columns if col not in self.exclude_cols]
         
-        # Also exclude any lag/rolling features that have too many NaN
+        # Filter to only numeric columns with sufficient data
         valid_features = []
         for col in feature_cols:
             if col in df.columns and df[col].dtype in ['int64', 'float64']:
@@ -66,7 +107,8 @@ class ModelTrainer:
             print("⚠ No valid features found, using default features")
             valid_features = [col for col in feature_cols if col in df.columns]
         
-        print(f"Selected {len(valid_features)} features: {valid_features[:5]}...")
+        print(f"Selected {len(valid_features)} features:")
+        print(f"  {valid_features}")
         
         # Prepare X and y
         X = df[valid_features].copy()
@@ -105,9 +147,10 @@ class ModelTrainer:
         """Train Random Forest model"""
         print(f"\n=== Training Random Forest ===")
         
+        # Reduced n_estimators and max_depth for smaller model size (cloud storage)
         model = RandomForestRegressor(
-            n_estimators=100,
-            max_depth=15,
+            n_estimators=50,       # Reduced from 100 for smaller model
+            max_depth=10,          # Reduced from 15 for smaller model
             min_samples_split=5,
             min_samples_leaf=2,
             random_state=42,
@@ -140,10 +183,11 @@ class ModelTrainer:
         """Train Gradient Boosting model"""
         print(f"\n=== Training Gradient Boosting ===")
         
+        # Optimized for smaller model size (cloud storage)
         model = GradientBoostingRegressor(
-            n_estimators=100,
+            n_estimators=80,       # Reduced slightly
             learning_rate=0.1,
-            max_depth=5,
+            max_depth=4,           # Reduced from 5
             min_samples_split=5,
             min_samples_leaf=2,
             random_state=42,
@@ -328,10 +372,16 @@ class ModelTrainer:
         
         return importance_df
 
-    def train_all_models(self, df: pd.DataFrame) -> Dict:
-        """Convenience wrapper to prepare data and train all models.
-
-        Returns a dictionary with model results keyed by model name.
+    def train_all_models(self, df: pd.DataFrame, db_handler=None) -> Dict:
+        """
+        Train all models and optionally save to MongoDB
+        
+        Args:
+            df: Training data DataFrame
+            db_handler: Optional MongoDBHandler for cloud storage
+        
+        Returns:
+            Dictionary with model results keyed by model name
         """
         # Prepare data
         X_train, X_test, y_train, y_test, feature_names = self.prepare_data(df)
@@ -341,11 +391,71 @@ class ModelTrainer:
         self.train_gradient_boosting(X_train, y_train, X_test, y_test)
         self.train_ridge(X_train, y_train, X_test, y_test)
 
-        # Compare and save
-        best = self.compare_models()
-        self.save_models(feature_names)
+        # Compare and find best
+        best_model_name = self.compare_models()
+        
+        # Save to MongoDB if handler provided
+        if db_handler:
+            self.save_models_to_mongodb(db_handler, feature_names, best_model_name)
+        else:
+            # Fallback to local save (for backward compatibility)
+            self.save_models(feature_names)
 
         return self.results
+    
+    def save_models_to_mongodb(self, db_handler, feature_names: List[str], best_model_name: str):
+        """
+        Save all trained models to MongoDB for cloud deployment
+        
+        Args:
+            db_handler: MongoDBHandler instance
+            feature_names: List of feature names
+            best_model_name: Name of the best performing model
+        """
+        print(f"\n{'='*50}")
+        print("SAVING MODELS TO MONGODB (Cloud Storage)")
+        print(f"{'='*50}")
+        
+        # Serialize scaler once
+        scaler_binary = pickle.dumps(self.scaler)
+        
+        models_data = []
+        
+        for model_name, model in self.models.items():
+            # Serialize model
+            model_binary = pickle.dumps(model)
+            
+            # Get metrics (without predictions array to save space)
+            metrics = {
+                'train_rmse': self.results[model_name]['train_rmse'],
+                'train_mae': self.results[model_name]['train_mae'],
+                'train_r2': self.results[model_name]['train_r2'],
+                'test_rmse': self.results[model_name]['test_rmse'],
+                'test_mae': self.results[model_name]['test_mae'],
+                'test_r2': self.results[model_name]['test_r2'],
+                'model_display_name': self.results[model_name]['model_name'],
+                'timestamp': self.results[model_name]['timestamp']
+            }
+            
+            models_data.append({
+                'model_name': model_name,
+                'model_binary': model_binary,
+                'scaler_binary': scaler_binary,
+                'feature_names': feature_names,
+                'metrics': metrics,
+                'is_best': (model_name == best_model_name)
+            })
+            
+            print(f"  Prepared: {model_name} (size: {len(model_binary)/1024:.1f} KB)")
+        
+        # Save all to MongoDB
+        success = db_handler.save_all_models(models_data)
+        
+        if success:
+            print(f"\n✅ All {len(models_data)} models saved to MongoDB!")
+            print(f"   Best model: {best_model_name}")
+        else:
+            print(f"\n❌ Failed to save models to MongoDB")
 
 
 # Test
