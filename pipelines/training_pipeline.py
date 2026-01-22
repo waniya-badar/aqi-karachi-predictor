@@ -118,7 +118,10 @@ def run_training_pipeline(min_days: int = 7, data_days: int = 120):
                 for m in stored_models:
                     metrics = m.get('metrics', {})
                     is_best = " (BEST)" if m.get('is_best') else ""
-                    logger.info(f"  - {m['model_name']}: R²={metrics.get('test_r2', 0):.4f}{is_best}")
+                    r2 = metrics.get('test_r2', 0)
+                    mae = metrics.get('test_mae', 0)
+                    rmse = metrics.get('test_rmse', 0)
+                    logger.info(f"  - {m['model_name']}: R²={r2:.4f}, MAE={mae:.2f}, RMSE={rmse:.2f}{is_best}")
                     pipeline_status['models'][m['model_name']] = metrics
                 
                 if best_model:

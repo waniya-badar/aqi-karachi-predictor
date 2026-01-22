@@ -173,9 +173,9 @@ class ModelTrainer:
         self.results['random_forest'] = results
         
         print(f"Random Forest trained")
-        print(f"  Train RMSE: {results['train_rmse']:.2f}")
-        print(f"  Test RMSE: {results['test_rmse']:.2f}")
-        print(f"  Test R²: {results['test_r2']:.4f}")
+        print(f"  R²:   {results['test_r2']:.4f}")
+        print(f"  MAE:  {results['test_mae']:.2f}")
+        print(f"  RMSE: {results['test_rmse']:.2f}")
         
         return results
     
@@ -209,9 +209,9 @@ class ModelTrainer:
         self.results['gradient_boosting'] = results
         
         print(f"Gradient Boosting trained")
-        print(f"  Train RMSE: {results['train_rmse']:.2f}")
-        print(f"  Test RMSE: {results['test_rmse']:.2f}")
-        print(f"  Test R²: {results['test_r2']:.4f}")
+        print(f"  R²:   {results['test_r2']:.4f}")
+        print(f"  MAE:  {results['test_mae']:.2f}")
+        print(f"  RMSE: {results['test_rmse']:.2f}")
         
         return results
     
@@ -236,9 +236,9 @@ class ModelTrainer:
         self.results['ridge'] = results
         
         print(f"Ridge Regression trained")
-        print(f"  Train RMSE: {results['train_rmse']:.2f}")
-        print(f"  Test RMSE: {results['test_rmse']:.2f}")
-        print(f"  Test R²: {results['test_r2']:.4f}")
+        print(f"  R²:   {results['test_r2']:.4f}")
+        print(f"  MAE:  {results['test_mae']:.2f}")
+        print(f"  RMSE: {results['test_rmse']:.2f}")
         
         return results
     

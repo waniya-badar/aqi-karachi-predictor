@@ -53,7 +53,11 @@ def load_models_from_mongodb():
             scalers[model_name] = pickle.loads(model_data['scaler_binary'])
             if feature_names is None:
                 feature_names = model_data.get('feature_names', [])
-            print(f"  [OK] Loaded {model_name} (R²: {model_data.get('metrics', {}).get('test_r2', 'N/A'):.4f})")
+            metrics = model_data.get('metrics', {})
+            r2 = metrics.get('test_r2', 0)
+            mae = metrics.get('test_mae', 0)
+            rmse = metrics.get('test_rmse', 0)
+            print(f"  [OK] Loaded {model_name} (R²: {r2:.4f}, MAE: {mae:.2f}, RMSE: {rmse:.2f})")
         else:
             print(f"  [FAIL] Could not load {model_name}")
     

@@ -40,7 +40,7 @@ def load_best_model():
     model_name = model_doc.get('model_name', 'unknown')
     
     print(f"  [OK] Loaded {model_name}")
-    print(f"       R²: {metrics.get('test_r2', 0):.4f}, RMSE: {metrics.get('test_rmse', 0):.2f}")
+    print(f"       R²: {metrics.get('test_r2', 0):.4f}, MAE: {metrics.get('test_mae', 0):.2f}, RMSE: {metrics.get('test_rmse', 0):.2f}")
     
     db_handler.close()
     return model, scaler, feature_names, metrics, model_name

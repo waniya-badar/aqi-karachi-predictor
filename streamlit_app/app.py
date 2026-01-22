@@ -280,9 +280,10 @@ def main():
     st.sidebar.markdown("### Model Metrics")
     info = model_details[model_choice]
     
-    col1, col2 = st.sidebar.columns(2)
-    col1.metric("Test R2", f"{info['test_r2']:.4f}")
-    col2.metric("RMSE", f"{info['rmse']:.2f}")
+    col1, col2, col3 = st.sidebar.columns(3)
+    col1.metric("R²", f"{info['test_r2']:.4f}")
+    col2.metric("MAE", f"{info['mae']:.2f}")
+    col3.metric("RMSE", f"{info['rmse']:.2f}")
     
     st.sidebar.markdown("---")
     if st.sidebar.button("Refresh Data", use_container_width=True):
