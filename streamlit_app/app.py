@@ -107,7 +107,7 @@ def create_aqi_gauge(aqi_value):
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=aqi_value,
-        number={'font': {'size': 48, 'color': color}},
+        number={'font': {'size': 48, 'color': 'black'}},
         domain={'x': [0, 1], 'y': [0, 1]},
         title={'text': f"Current AQI: {int(aqi_value)}", 'font': {'size': 20}},
         gauge={
