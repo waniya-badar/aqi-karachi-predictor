@@ -149,6 +149,7 @@ class OpenMeteoFetcher:
                 'longitude': self.longitude,
                 'hourly': 'pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone,us_aqi',
                 'past_days': past_days,
+                'forecast_days': 0,  # IMPORTANT: Don't include forecast/future data
                 'timezone': 'UTC'
             }
             
