@@ -296,202 +296,132 @@ def main():
     try:
         with st.spinner("Loading..."):
             model, scaler, feature_names, metrics = load_model_from_mongodb(model_choice)
-            
             if model is None:
                 st.error(f"Failed to load model '{model_choice}'")
                 return
+            db_handler = get_db_handler()
+            # Current AQI
+            st.markdown("## Current Air Quality")
+            col1, col2 = st.columns([1, 2])
+            # Use latest reading from feature store
+            latest_features_df = db_handler.get_latest_features(limit=1)
+            if latest_features_df is not None and len(latest_features_df) > 0:
+                latest_features = latest_features_df.iloc[0]
+                current_aqi = latest_features['aqi']
+                category, color = get_aqi_category(current_aqi)
+                with col1:
+                    st.metric("Current AQI", current_aqi)
+                    st.markdown(f"**Status: {category}**")
+                    st.caption(f"Date: {pd.to_datetime(latest_features['timestamp']).strftime('%Y-%m-%d')}")
+                with col2:
+                    st.markdown("### Pollutant Levels")
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("PM2.5", f"{latest_features.get('pm25', 0):.1f} ug/m3")
+                    m1.metric("PM10", f"{latest_features.get('pm10', 0):.1f} ug/m3")
+                    m2.metric("O3", f"{latest_features.get('o3', 0):.1f} ppb")
+                    m2.metric("NO2", f"{latest_features.get('no2', 0):.1f} ppb")
+                    m3.metric("Temperature", f"{latest_features.get('temperature', 0):.1f} C")
+                    m3.metric("Humidity", f"{latest_features.get('humidity', 0):.0f}%")
+            else:
+                st.warning("No current AQI data found in feature store.")
             
-            db_handler = MongoDBHandler()
-            fetcher = AQICNFetcher()
-            engineer = FeatureEngineer()
-            
-            raw_data = fetcher.fetch_current_data()
-            if not raw_data:
-                st.error("Failed to fetch current AQI data")
-                return
-            
-            current_features = engineer.create_features(raw_data)
-            current_aqi = current_features['aqi']
-        
-        # Current AQI
-        st.markdown("## Current Air Quality")
-        
-        col1, col2 = st.columns([1, 2])
-        
-        with col1:
-            gauge_fig, category = create_aqi_gauge(current_aqi)
-            st.plotly_chart(gauge_fig, use_container_width=True)
-            st.markdown(f"**Status: {category}**")
-            
-            # Show data source
-            data_source = raw_data.get('source', 'unknown')
-            source_color = '#00c853' if data_source in ['aqicn', 'open-meteo'] else '#ff9800'
-            st.markdown(f"""
-                <div style="text-align: center; margin-top: 5px;">
-                    <span style="background-color: {source_color}; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px;">
-                        📡 {data_source.upper()}
-                    </span>
-                </div>
-            """, unsafe_allow_html=True)
-            st.caption(f"Updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-        
-        with col2:
-            st.markdown("### Pollutant Levels")
-            
-            m1, m2, m3 = st.columns(3)
-            m1.metric("PM2.5", f"{current_features.get('pm25', 0):.1f} ug/m3")
-            m1.metric("PM10", f"{current_features.get('pm10', 0):.1f} ug/m3")
-            m2.metric("O3", f"{current_features.get('o3', 0):.1f} ppb")
-            m2.metric("NO2", f"{current_features.get('no2', 0):.1f} ppb")
-            m3.metric("Temperature", f"{current_features.get('temperature', 0):.1f} C")
-            m3.metric("Humidity", f"{current_features.get('humidity', 0):.0f}%")
-        
-        # Health Advisory
-        if current_aqi > 300:
-            st.error(f"HAZARDOUS - AQI: {int(current_aqi)}. Avoid outdoor activities. Stay indoors.")
-        elif current_aqi > 200:
-            st.error(f"Very Unhealthy - AQI: {int(current_aqi)}. Limit outdoor activities.")
-        elif current_aqi > 150:
-            st.warning(f"Unhealthy - AQI: {int(current_aqi)}. Sensitive groups should limit outdoor activities.")
-        elif current_aqi > 100:
-            st.info(f"Moderate - AQI: {int(current_aqi)}. Acceptable for most people.")
-        else:
-            st.success(f"Good - AQI: {int(current_aqi)}. Air quality is satisfactory.")
-        
-        st.markdown("---")
-        
-        # 3-Day Forecast
-        st.markdown("## 3-Day AQI Forecast")
-        
-        if model and scaler and feature_names:
-            predictions = predict_future_aqi(model, scaler, current_features, feature_names, days=3)
-            
-            if predictions:
-                pred_cols = st.columns(3)
-                
-                for i, pred in enumerate(predictions):
-                    with pred_cols[i]:
-                        category, color = get_aqi_category(pred['aqi'])
-                        st.markdown(f"""
-                            <div style="background-color: {color}; padding: 15px; border-radius: 8px; text-align: center;">
-                                <h4 style="margin: 0; color: black;">Day {pred['day']}</h4>
-                                <p style="margin: 5px 0; color: black;">{pred['date']}</p>
-                                <h2 style="margin: 10px 0; color: black;">{pred['aqi']:.0f}</h2>
-                                <p style="margin: 0; color: black;">{category}</p>
-                            </div>
-                        """, unsafe_allow_html=True)
-                
-                # Forecast chart
-                st.markdown("### Forecast Trend")
-                
-                trend_data = pd.DataFrame(predictions)
-                trend_data['date'] = pd.to_datetime(trend_data['date'])
-                
-                current_df = pd.DataFrame([{'date': datetime.now(), 'aqi': current_aqi, 'type': 'Current'}])
-                trend_data['type'] = 'Forecast'
-                combined = pd.concat([current_df, trend_data], ignore_index=True)
-                
-                fig = go.Figure()
-                
-                fig.add_trace(go.Scatter(
-                    x=combined[combined['type'] == 'Current']['date'],
-                    y=combined[combined['type'] == 'Current']['aqi'],
-                    mode='markers',
-                    marker=dict(size=12, color='#1f77b4', symbol='diamond'),
-                    name='Current'
-                ))
-                
-                fig.add_trace(go.Scatter(
-                    x=combined[combined['type'] == 'Forecast']['date'],
-                    y=combined[combined['type'] == 'Forecast']['aqi'],
-                    mode='lines+markers',
-                    line=dict(color='#ff7f0e', width=2, dash='dash'),
-                    marker=dict(size=10),
-                    name='Forecast'
-                ))
-                
-                fig.add_hrect(y0=0, y1=50, fillcolor="#00e400", opacity=0.1)
-                fig.add_hrect(y0=50, y1=100, fillcolor="#ffff00", opacity=0.1)
-                fig.add_hrect(y0=100, y1=150, fillcolor="#ff7e00", opacity=0.1)
-                fig.add_hrect(y0=150, y1=200, fillcolor="#ff0000", opacity=0.1)
-                
-                fig.update_layout(
-                    title='AQI Forecast',
-                    xaxis_title='Date',
-                    yaxis_title='AQI',
-                    height=400,
-                    template='plotly_white'
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-        
-        st.markdown("---")
-        
-        # Historical Data
-        st.markdown("## Historical Data")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        if col1.button("3 Days", use_container_width=True):
-            st.session_state.history_days = 3
-        if col2.button("7 Days", use_container_width=True):
-            st.session_state.history_days = 7
-        if col3.button("30 Days", use_container_width=True):
-            st.session_state.history_days = 30
-        if col4.button("90 Days", use_container_width=True):
-            st.session_state.history_days = 90
-        
-        if 'history_days' not in st.session_state:
-            st.session_state.history_days = 7
-        
-        history_days = st.session_state.history_days
-        
-        hist_df = db_handler.get_training_data(days=history_days)
-        
-        if hist_df is not None and len(hist_df) > 0:
-            if 'timestamp' in hist_df.columns and 'aqi' in hist_df.columns:
-                if not pd.api.types.is_datetime64_any_dtype(hist_df['timestamp']):
-                    hist_df['timestamp'] = pd.to_datetime(hist_df['timestamp'])
-                
-                hist_df = hist_df.sort_values('timestamp')
-                hist_df['aqi'] = pd.to_numeric(hist_df['aqi'], errors='coerce')
-                hist_df = hist_df.dropna(subset=['aqi'])
-                
-                if len(hist_df) > 0:
-                    st.info(f"Records: {len(hist_df)} | Range: {hist_df['timestamp'].min().strftime('%Y-%m-%d')} to {hist_df['timestamp'].max().strftime('%Y-%m-%d')}")
-                    
-                    hist_fig = go.Figure()
-                    hist_fig.add_trace(go.Scatter(
-                        x=hist_df['timestamp'],
-                        y=hist_df['aqi'],
-                        mode='lines',
-                        name='AQI',
-                        line=dict(color='#1f77b4', width=2),
-                        fill='tozeroy',
-                        fillcolor='rgba(31, 119, 180, 0.2)'
+            # 3-Day Forecast
+            st.markdown("## 3-Day AQI Forecast")
+            if model and scaler and feature_names:
+                predictions = predict_future_aqi(model, scaler, latest_features, feature_names, days=3)
+                if predictions:
+                    pred_cols = st.columns(3)
+                    for i, pred in enumerate(predictions):
+                        with pred_cols[i]:
+                            category, color = get_aqi_category(pred['aqi'])
+                            st.markdown(f"""
+                                <div style='background-color: {color}; padding: 15px; border-radius: 8px; text-align: center;'>
+                                    <h4 style='margin: 0; color: black;'>Day {pred['day']}</h4>
+                                    <p style='margin: 5px 0; color: black;'>{pred['date']}</p>
+                                    <h2 style='margin: 10px 0; color: black;'>{pred['aqi']:.0f}</h2>
+                                    <p style='margin: 0; color: black;'>{category}</p>
+                                </div>
+                            """, unsafe_allow_html=True)
+                    # Forecast chart
+                    st.markdown("### Forecast Trend")
+                    trend_data = pd.DataFrame(predictions)
+                    trend_data['date'] = pd.to_datetime(trend_data['date'])
+                    current_df = pd.DataFrame([{'date': latest_features['timestamp'], 'aqi': current_aqi, 'type': 'Current'}])
+                    trend_data['type'] = 'Forecast'
+                    combined = pd.concat([current_df, trend_data], ignore_index=True)
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=combined[combined['type'] == 'Current']['date'],
+                        y=combined[combined['type'] == 'Current']['aqi'],
+                        mode='markers',
+                        marker=dict(size=12, color='#1f77b4', symbol='diamond'),
+                        name='Current'
                     ))
-                    
-                    hist_fig.update_layout(
-                        title=f'AQI - Last {history_days} Days',
+                    fig.add_trace(go.Scatter(
+                        x=combined[combined['type'] == 'Forecast']['date'],
+                        y=combined[combined['type'] == 'Forecast']['aqi'],
+                        mode='lines+markers',
+                        line=dict(color='#ff7f0e', width=2, dash='dash'),
+                        marker=dict(size=10),
+                        name='Forecast'
+                    ))
+                    fig.add_hrect(y0=0, y1=50, fillcolor="#00e400", opacity=0.1)
+                    fig.add_hrect(y0=50, y1=100, fillcolor="#ffff00", opacity=0.1)
+                    fig.add_hrect(y0=100, y1=150, fillcolor="#ff7e00", opacity=0.1)
+                    fig.add_hrect(y0=150, y1=200, fillcolor="#ff0000", opacity=0.1)
+                    fig.update_layout(
+                        title='AQI Forecast',
                         xaxis_title='Date',
                         yaxis_title='AQI',
                         height=400,
                         template='plotly_white'
                     )
-                    
-                    st.plotly_chart(hist_fig, use_container_width=True)
-                    
-                    # Statistics
-                    st.markdown("### Statistics")
-                    s1, s2, s3, s4 = st.columns(4)
-                    s1.metric("Average", f"{hist_df['aqi'].mean():.0f}")
-                    s2.metric("Max", f"{hist_df['aqi'].max():.0f}")
-                    s3.metric("Min", f"{hist_df['aqi'].min():.0f}")
-                    s4.metric("Std Dev", f"{hist_df['aqi'].std():.1f}")
-        else:
-            st.info("No historical data available.")
-        
-        db_handler.close()
-        
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("No model or feature data available for forecasting.")
+            
+            st.markdown("---")
+            # Historical Data (always show 90 days)
+            st.markdown("## Historical Data (Last 90 Days)")
+            hist_df_90 = db_handler.get_training_data(days=90)
+            if hist_df_90 is not None and len(hist_df_90) > 0:
+                if 'timestamp' in hist_df_90.columns and 'aqi' in hist_df_90.columns:
+                    if not pd.api.types.is_datetime64_any_dtype(hist_df_90['timestamp']):
+                        hist_df_90['timestamp'] = pd.to_datetime(hist_df_90['timestamp'])
+                    hist_df_90 = hist_df_90.sort_values('timestamp')
+                    hist_df_90['aqi'] = pd.to_numeric(hist_df_90['aqi'], errors='coerce')
+                    hist_df_90 = hist_df_90.dropna(subset=['aqi'])
+                    if len(hist_df_90) > 0:
+                        st.info(f"Records: {len(hist_df_90)} | Range: {hist_df_90['timestamp'].min().strftime('%Y-%m-%d')} to {hist_df_90['timestamp'].max().strftime('%Y-%m-%d')}")
+                        hist_fig_90 = go.Figure()
+                        hist_fig_90.add_trace(go.Scatter(
+                            x=hist_df_90['timestamp'],
+                            y=hist_df_90['aqi'],
+                            mode='lines',
+                            name='AQI',
+                            line=dict(color='#1f77b4', width=2),
+                            fill='tozeroy',
+                            fillcolor='rgba(31, 119, 180, 0.2)'
+                        ))
+                        hist_fig_90.update_layout(
+                            title='AQI - Last 90 Days',
+                            xaxis_title='Date',
+                            yaxis_title='AQI',
+                            height=400,
+                            template='plotly_white'
+                        )
+                        st.plotly_chart(hist_fig_90, use_container_width=True)
+                        # Statistics
+                        st.markdown("### Statistics (90 Days)")
+                        s1, s2, s3, s4 = st.columns(4)
+                        s1.metric("Average", f"{hist_df_90['aqi'].mean():.0f}")
+                        s2.metric("Max", f"{hist_df_90['aqi'].max():.0f}")
+                        s3.metric("Min", f"{hist_df_90['aqi'].min():.0f}")
+                        s4.metric("Std Dev", f"{hist_df_90['aqi'].std():.1f}")
+            else:
+                st.info("No historical data available for last 90 days.")
+            
+            return
     except Exception as e:
         st.error(f"Error: {str(e)}")
     

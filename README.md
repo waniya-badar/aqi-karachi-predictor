@@ -289,12 +289,12 @@ trainer.train_all_models(df, db_handler)
 
 ## Dashboard Features
 
-- Current AQI gauge with real-time value
-- 3-day forecast with daily predictions
-- Historical data visualization
-- Model selection (choose between 3 models)
-- Model metrics display (R², MAE, RMSE)
-- Pollutant levels breakdown
+Current AQI and pollutant levels from the latest feature store data
+3-day forecast using the latest feature store data
+Historical AQI graph (always shows last 90 days)
+Model selection (choose between 3 models)
+Model metrics display (R², MAE, RMSE)
+Pollutant levels breakdown
 
 ---
 
