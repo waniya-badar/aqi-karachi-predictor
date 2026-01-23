@@ -325,7 +325,6 @@ def main():
                 with col1:
                     st.metric("Current AQI", current_aqi)
                     st.markdown(f"**Status: {category}**")
-                    st.caption(f"Date: {pd.to_datetime(latest_features['timestamp']).strftime('%Y-%m-%d')}")
                 with col2:
                     st.markdown("### Pollutant Levels")
                     m1, m2, m3 = st.columns(3)
