@@ -158,35 +158,20 @@ def run_training_pipeline(min_days: int = 7, data_days: int = 120):
 
 
 def _save_training_log(pipeline_status):
-    """Save training pipeline execution log"""
-    log_file = 'logs/training_pipeline_log.json'
-    os.makedirs('logs', exist_ok=True)
-
+    """Save training pipeline execution log to MongoDB (serverless)"""
     try:
-        if os.path.exists(log_file):
-            with open(log_file, 'r') as f:
-                logs = json.load(f)
-        else:
-            logs = []
-
-        logs.append(pipeline_status)
-
-        if len(logs) > 500:
-            logs = logs[-500:]
-
-        with open(log_file, 'w') as f:
-            json.dump(logs, f, indent=2)
-
-        logger.info(f"Training log saved to {log_file}")
+        from src.mongodb_handler import MongoDBHandler
+        db = MongoDBHandler()
+        # Save to pipeline_logs collection in MongoDB
+        db.db.pipeline_logs.insert_one({
+            'pipeline': 'training',
+            'status': pipeline_status,
+            'logged_at': datetime.utcnow()
+        })
+        db.close()
+        logger.info("Training log saved to MongoDB")
     except Exception as e:
-        logger.warning(f"Failed to save training log: {e}")
-        # Best effort only; do not attempt to access outer-scope variables here
-        try:
-            with open(log_file, 'w') as f:
-                json.dump([pipeline_status], f, indent=2)
-            logger.info(f"Training log written fallback to {log_file}")
-        except Exception:
-            logger.error("Failed to write fallback training log")
+        logger.warning(f"Failed to save training log to MongoDB: {e}")
 
 
 if __name__ == "__main__":

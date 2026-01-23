@@ -111,28 +111,20 @@ def run_feature_pipeline(dry_run=False):
 
 
 def _save_pipeline_log(pipeline_status):
-    """Save pipeline execution log"""
-    log_file = 'logs/feature_pipeline_log.json'
-    os.makedirs('logs', exist_ok=True)
-    
+    """Save pipeline execution log to MongoDB (serverless)"""
     try:
-        if os.path.exists(log_file):
-            with open(log_file, 'r') as f:
-                logs = json.load(f)
-        else:
-            logs = []
-        
-        logs.append(pipeline_status)
-        
-        if len(logs) > 1000:
-            logs = logs[-1000:]
-        
-        with open(log_file, 'w') as f:
-            json.dump(logs, f, indent=2)
-        
-        logger.info("Pipeline log saved")
+        from src.mongodb_handler import MongoDBHandler
+        db = MongoDBHandler()
+        # Save to pipeline_logs collection in MongoDB
+        db.db.pipeline_logs.insert_one({
+            'pipeline': 'feature',
+            'status': pipeline_status,
+            'logged_at': datetime.utcnow()
+        })
+        db.close()
+        logger.info("Pipeline log saved to MongoDB")
     except Exception as e:
-        logger.warning(f"Failed to save log: {e}")
+        logger.warning(f"Failed to save log to MongoDB: {e}")
 
 
 if __name__ == "__main__":
