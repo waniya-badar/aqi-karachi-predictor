@@ -322,6 +322,17 @@ def main():
             gauge_fig, category = create_aqi_gauge(current_aqi)
             st.plotly_chart(gauge_fig, use_container_width=True)
             st.markdown(f"**Status: {category}**")
+            
+            # Show data source
+            data_source = raw_data.get('source', 'unknown')
+            source_color = '#00c853' if data_source in ['aqicn', 'open-meteo'] else '#ff9800'
+            st.markdown(f"""
+                <div style="text-align: center; margin-top: 5px;">
+                    <span style="background-color: {source_color}; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px;">
+                        📡 {data_source.upper()}
+                    </span>
+                </div>
+            """, unsafe_allow_html=True)
             st.caption(f"Updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
         
         with col2:
@@ -488,7 +499,8 @@ def main():
     st.markdown("---")
     st.markdown("""
         <div style="text-align: center; color: #666; font-size: 12px;">
-            Data: AQICN | Updated hourly | Models retrain daily
+            Data Sources: AQICN API, Open-Meteo (FREE) | Updated hourly | Models retrain daily<br>
+            <span style="color: #888;">Historical data: Open-Meteo Air Quality API (Real data, no API key needed)</span>
         </div>
     """, unsafe_allow_html=True)
 
