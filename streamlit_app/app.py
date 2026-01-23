@@ -320,7 +320,7 @@ def main():
                     m1.metric("PM10", f"{latest_features.get('pm10', 0):.1f} ug/m3")
                     m2.metric("O3", f"{latest_features.get('o3', 0):.1f} ppb")
                     m2.metric("NO2", f"{latest_features.get('no2', 0):.1f} ppb")
-                    m3.metric("Temperature", f"{latest_features.get('temperature', 0):.1f} C")
+                    # m3.metric("Temperature", f"{latest_features.get('temperature', 0):.1f} C")
                     m3.metric("Humidity", f"{latest_features.get('humidity', 0):.0f}%")
             else:
                 st.warning("No current AQI data found in feature store.")

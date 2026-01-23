@@ -121,11 +121,21 @@ class AQICNFetcher:
         """Parse Open-Meteo API response"""
         aqi = current.get('us_aqi', 50)
         pm25 = current.get('pm2_5', 12.0)
-        
+
         # If AQI is missing, calculate from PM2.5
         if aqi is None and pm25 is not None:
             aqi = self._calculate_aqi_from_pm25(pm25)
-        
+
+        # Sanity check for temperature
+        temp = weather.get('temperature_2m', 28)
+        try:
+            temp = float(temp)
+        except Exception:
+            temp = 28
+        if temp < 5 or temp > 50:
+            print(f"[WARNING] Unusual temperature value from Open-Meteo: {temp}°C. Using fallback 28°C.")
+            temp = 28
+
         parsed_data = {
             'timestamp': datetime.utcnow(),
             'aqi': int(round(aqi)) if aqi else 50,
@@ -139,12 +149,12 @@ class AQICNFetcher:
             'no2': round(current.get('nitrogen_dioxide', 15.0), 1),
             'so2': round(current.get('sulphur_dioxide', 5.0), 1),
             'co': round(current.get('carbon_monoxide', 500) / 1000, 2),  # Convert µg/m³ to mg/m³
-            'temperature': round(weather.get('temperature_2m', 28), 1),
+            'temperature': round(temp, 1),
             'humidity': round(weather.get('relative_humidity_2m', 65), 1),
             'pressure': round(weather.get('surface_pressure', 1013), 1),
             'wind_speed': round(weather.get('wind_speed_10m', 8), 1)
         }
-        
+
         print(f"✓ Open-Meteo: AQI={parsed_data['aqi']} (real data)")
         return parsed_data
     
