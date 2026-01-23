@@ -2,10 +2,19 @@
 Data Fetcher - Gets air quality data from AQICN API and Open-Meteo
 This fetches real-time AQI data for Karachi from multiple sources
 
-Data Sources (in order of preference):
-1. AQICN API - Real-time AQI data (requires API key, but 'demo' works)
-2. Open-Meteo Air Quality API - FREE, no API key needed, global coverage
-3. Demo data - Only as last resort
+Data Sources:
+- REAL-TIME DATA: AQICN API (primary) → Open-Meteo (fallback)
+- HISTORICAL DATA: Open-Meteo Air Quality API (backfill script)
+
+Both APIs use the same US EPA AQI scale (0-500):
+  0-50: Good (Green)
+  51-100: Moderate (Yellow)
+  101-150: Unhealthy for Sensitive Groups (Orange)
+  151-200: Unhealthy (Red)
+  201-300: Very Unhealthy (Purple)
+  301-500: Hazardous (Maroon)
+
+NO DEMO/FAKE DATA - Only real API data is used!
 """
 
 import os
@@ -13,7 +22,6 @@ import requests
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 from dotenv import load_dotenv
-import random
 
 load_dotenv()
 
@@ -51,8 +59,8 @@ class AQICNFetcher:
             if data.get('status') == 'ok':
                 return self._parse_aqicn_response(data['data'])
             
-            print(f"API unavailable, using simulated data for demo")
-            return self._generate_demo_data()
+            print(f"AQICN API unavailable, trying Open-Meteo...")
+            return self._fetch_from_open_meteo()
             
         except Exception as e:
             print(f"Error fetching from AQICN ({e}), trying Open-Meteo...")
@@ -86,12 +94,11 @@ class AQICNFetcher:
                 weather = self._fetch_open_meteo_weather()
                 return self._parse_open_meteo_response(current, weather)
             
-            print("No data from Open-Meteo, using demo data")
-            return self._generate_demo_data()
+            raise Exception("No data available from Open-Meteo")
             
         except Exception as e:
-            print(f"Error fetching from Open-Meteo ({e}), using demo data")
-            return self._generate_demo_data()
+            print(f"ERROR: Both AQICN and Open-Meteo APIs failed ({e})")
+            raise Exception(f"All APIs failed: {e}")
     
     def _fetch_open_meteo_weather(self) -> Dict:
         """Fetch current weather from Open-Meteo"""
@@ -188,29 +195,6 @@ class AQICNFetcher:
                 return int(round(((aqi_hi - aqi_lo) / (bp_hi - bp_lo)) * (pm25 - bp_lo) + aqi_lo))
         return 500 if pm25 > 500.4 else 0
     
-    def _generate_demo_data(self) -> Dict:
-        """Generate realistic demo data for testing (last resort fallback)"""
-        base_aqi = random.randint(80, 180)
-        
-        return {
-            'timestamp': datetime.utcnow(),
-            'aqi': base_aqi,
-            'station_name': 'Karachi (Demo)',
-            'latitude': self.default_lat,
-            'longitude': self.default_lon,
-            'pm25': base_aqi * 0.6 + random.randint(5, 20),
-            'pm10': base_aqi * 0.8 + random.randint(10, 30),
-            'o3': random.randint(15, 45),
-            'no2': random.randint(10, 40),
-            'so2': random.randint(2, 15),
-            'co': random.uniform(0.3, 2.0),
-            'temperature': random.randint(25, 38),
-            'pressure': random.randint(1010, 1016),
-            'humidity': random.randint(40, 80),
-            'wind_speed': random.randint(3, 15),
-            'source': 'demo'
-        }
-    
     def fetch_historical_data(self, date: str) -> Optional[Dict]:
         """
         Fetch historical data for a specific date from Open-Meteo
@@ -292,11 +276,6 @@ if __name__ == "__main__":
             print(f"  PM10: {data['pm10']:.1f}")
             print(f"  Temperature: {data['temperature']}°C")
             print(f"  Humidity: {data['humidity']}%")
-            
-            if source == 'demo':
-                print("\n⚠ Note: Using simulated demo data")
-                print("  Both AQICN and Open-Meteo failed")
-            else:
-                print(f"\n✓ Real data from {source}!")
+            print(f"\n✓ Real data from {source} (US EPA AQI scale 0-500)")
     else:
-        print("✗ API connection failed.")
+        print("✗ Both AQICN and Open-Meteo APIs failed!")
