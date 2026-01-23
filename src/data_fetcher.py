@@ -32,7 +32,14 @@ class AQICNFetcher:
     def __init__(self):
         """Initialize with API key and station"""
         self.api_key = os.getenv('AQICN_API_KEY', 'demo')
-        self.station_id = os.getenv('KARACHI_STATION_ID', 'karachi')
+        # Prefer explicit geo coordinates for Karachi to avoid resolving to wrong station
+        # Use environment override if provided; otherwise default to geo coords for Karachi
+        # Always use geo feed for Karachi unless explicitly set to a non-Karachi station
+        env_station = os.getenv('KARACHI_STATION_ID')
+        if env_station in [None, '', '@8762', '8762', 'geo:24.8607;67.0011']:
+            self.station_id = f"geo:{24.8607};{67.0011}"
+        else:
+            self.station_id = env_station
         self.base_url = "https://api.waqi.info/feed"
         self.open_meteo_url = "https://air-quality-api.open-meteo.com/v1/air-quality"
         self.open_meteo_weather_url = "https://api.open-meteo.com/v1/forecast"
@@ -47,21 +54,38 @@ class AQICNFetcher:
             Dictionary with AQI and pollutant data, or None if failed
         """
         try:
-            # Try AQICN API
+            # Always use geo-based fetching for Karachi
+            if isinstance(self.station_id, str) and self.station_id.startswith('geo:'):
+                print("Using geo feed; preferring Open-Meteo for precise Karachi coordinates...")
+                return self._fetch_from_open_meteo()
+            # If a non-Karachi station is explicitly set, use AQICN
             url = f"{self.base_url}/{self.station_id}/?token={self.api_key}"
-            
-            print(f"Fetching data from AQICN for Karachi...")
+            print(f"Fetching data from AQICN for station {self.station_id}...")
             response = requests.get(url, timeout=10)
             response.raise_for_status()
-            
             data = response.json()
-            
+
             if data.get('status') == 'ok':
-                return self._parse_aqicn_response(data['data'])
-            
+                parsed = self._parse_aqicn_response(data['data'])
+                missing_keys = [k for k in ['pm25', 'pm10', 'o3', 'no2', 'so2', 'co',
+                                            'temperature', 'humidity', 'pressure', 'wind_speed']
+                                if parsed.get(k) in (None, '')]
+                if missing_keys:
+                    print(f"[INFO] Missing keys from AQICN: {missing_keys}. Augmenting from Open-Meteo...")
+                    try:
+                        om = self._fetch_from_open_meteo()
+                        if om:
+                            for k in missing_keys:
+                                if om.get(k) not in (None, ''):
+                                    parsed[k] = om.get(k)
+                            parsed['source'] = parsed.get('source', 'aqicn') + '+open-meteo'
+                    except Exception as e:
+                        print(f"[WARN] Failed to augment from Open-Meteo: {e}")
+                return parsed
+
             print(f"AQICN API unavailable, trying Open-Meteo...")
             return self._fetch_from_open_meteo()
-            
+
         except Exception as e:
             print(f"Error fetching from AQICN ({e}), trying Open-Meteo...")
             return self._fetch_from_open_meteo()
@@ -136,6 +160,26 @@ class AQICNFetcher:
             print(f"[WARNING] Unusual temperature value from Open-Meteo: {temp}°C. Using fallback 28°C.")
             temp = 28
 
+        # Basic sanity / plausibility checks
+        try:
+            pm25_val = float(pm25)
+        except Exception:
+            pm25_val = 12.0
+
+        # Compute AQI from PM2.5 if the reported AQI looks missing or out-of-range
+        if aqi is None:
+            aqi = self._calculate_aqi_from_pm25(pm25_val)
+
+        # If reported AQI is wildly different from PM2.5-derived AQI, prefer the calculated one
+        try:
+            reported_aqi = int(round(aqi)) if aqi else None
+        except Exception:
+            reported_aqi = None
+
+        calculated_aqi = self._calculate_aqi_from_pm25(pm25_val)
+        if reported_aqi is None or reported_aqi <= 0 or reported_aqi > 500 or abs(reported_aqi - calculated_aqi) > 80:
+            print(f"[WARN] AQI suspicious (reported={reported_aqi}, calc={calculated_aqi}). Using calculated AQI={calculated_aqi}.")
+            aqi = calculated_aqi
         parsed_data = {
             'timestamp': datetime.utcnow(),
             'aqi': int(round(aqi)) if aqi else 50,
@@ -143,7 +187,7 @@ class AQICNFetcher:
             'latitude': self.default_lat,
             'longitude': self.default_lon,
             'source': 'open-meteo',
-            'pm25': round(pm25, 1) if pm25 else 12.0,
+            'pm25': round(pm25_val, 1),
             'pm10': round(current.get('pm10', 25.0), 1),
             'o3': round(current.get('ozone', 30.0), 1),
             'no2': round(current.get('nitrogen_dioxide', 15.0), 1),
@@ -177,11 +221,35 @@ class AQICNFetcher:
         parsed_data['no2'] = iaqi.get('no2', {}).get('v', 15)
         parsed_data['so2'] = iaqi.get('so2', {}).get('v', 5)
         parsed_data['co'] = iaqi.get('co', {}).get('v', 0.5)
-        
+
         # Get weather data
+        try:
+            pm25_val = float(parsed_data['pm25'])
+        except Exception:
+            pm25_val = 35.0
+
+        # Validate AQI: only compute/replace if AQICN did not provide a valid AQI
+        try:
+            reported_aqi = int(parsed_data.get('aqi') or 0)
+        except Exception:
+            reported_aqi = 0
+        if reported_aqi <= 0 or reported_aqi > 500:
+            calculated_aqi = self._calculate_aqi_from_pm25(pm25_val)
+            print(f"[WARN] AQICN AQI missing/invalid (reported={reported_aqi}). Using calculated value={calculated_aqi}.")
+            parsed_data['aqi'] = calculated_aqi
+
         parsed_data['temperature'] = iaqi.get('t', {}).get('v', 28)
+        # Humidity plausibility
+        hum = iaqi.get('h', {}).get('v', 65)
+        try:
+            hum = float(hum)
+        except Exception:
+            hum = 65.0
+        if hum < 5 or hum > 100:
+            print(f"[WARN] Unusual humidity from AQICN: {hum}%. Using fallback 65%.")
+            hum = 65.0
         parsed_data['pressure'] = iaqi.get('p', {}).get('v', 1013)
-        parsed_data['humidity'] = iaqi.get('h', {}).get('v', 65)
+        parsed_data['humidity'] = hum
         parsed_data['wind_speed'] = iaqi.get('w', {}).get('v', 8)
         
         print(f"✓ AQICN: AQI={parsed_data['aqi']} (real data)")

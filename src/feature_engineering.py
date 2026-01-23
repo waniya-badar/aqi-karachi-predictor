@@ -74,6 +74,14 @@ class FeatureEngineer:
             features['latitude'] = raw_data.get('latitude', 24.8607)
             features['longitude'] = raw_data.get('longitude', 67.0011)
             
+            # Validate: ensure no None/null values in critical fields
+            required_fields = ['aqi', 'pm25', 'pm10', 'o3', 'no2', 'so2', 'co', 
+                             'temperature', 'humidity', 'pressure', 'wind_speed']
+            missing_fields = [f for f in required_fields if features.get(f) in (None, '', np.nan)]
+            if missing_fields:
+                print(f"ERROR: Missing required fields: {missing_fields}")
+                return None
+            
             print(f"Created {len(features)} features for {timestamp}")
             return features
             

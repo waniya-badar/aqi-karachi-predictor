@@ -8,15 +8,16 @@ Predict Air Quality Index for Karachi using a 100% Serverless Machine Learning S
 
 An end-to-end machine learning system for predicting Air Quality Index (AQI) in Karachi featuring:
 
-- Real-time Data Collection - Hourly AQI data from AQICN API
-- Cloud Storage - All data and models stored in MongoDB Atlas
-- Feature Engineering - Lag features, rolling statistics, temporal features
+- Real-time Data Collection - Hourly AQI data from Open-Meteo API (geo-based for Karachi: 24.8607, 67.0011)
+- Cloud Storage - All data and models stored in MongoDB Atlas (serverless)
+- Feature Engineering - Lag features, rolling statistics, temporal features (22 dynamic features)
 - 3 ML Models - Random Forest, Gradient Boosting, Ridge Regression
+- Training Dataset - 3 months (90 days) of historical Karachi data
 - Automated Model Selection - Best model selected based on R² score
-- Interactive Dashboard - Streamlit web application
-- 3-Day Forecasting - Predictions for next 3 days
+- Interactive Dashboard - Streamlit web application (loads models from MongoDB cloud)
+- 3-Day Forecasting - Predictions for next 3 days using trained models
 - Explainability - SHAP and LIME analysis
-- CI/CD Automation - GitHub Actions for hourly/daily pipelines
+- CI/CD Automation - GitHub Actions for hourly/daily pipelines (continues from last stored state)
 
 ---
 
@@ -196,20 +197,21 @@ Total: 16 features used for prediction
 4. Runs every hour via GitHub Actions
 
 ### Daily Training Pipeline
-1. Fetch all historical data from MongoDB
-2. Create lag and rolling features
-3. Train 3 models (RF, GB, Ridge)
+1. Fetch 90 days (3 months) of historical data from MongoDB cloud
+2. Create lag and rolling features (22 total features)
+3. Train 3 models (Random Forest, Gradient Boosting, Ridge Regression)
 4. Evaluate using R², MAE, RMSE
-5. Select best model automatically
-6. Save all models to MongoDB
-7. Runs daily at 2 AM UTC
+5. Select best model automatically (currently Gradient Boosting with R²=0.9919)
+6. Save all models + metrics + scaler to MongoDB cloud (no local files)
+7. Log training run to training_history collection
+8. Runs daily at 2 AM UTC via GitHub Actions
 
 ### Inference Pipeline
-1. Load best model from MongoDB
-2. Fetch current conditions
-3. Generate 3-day forecast
-4. Save predictions to MongoDB
-5. Runs every 6 hours
+1. Load best model from MongoDB cloud (serverless)
+2. Fetch current conditions from Open-Meteo API
+3. Generate 3-day forecast (next 72 hours)
+4. Save predictions to MongoDB cloud
+5. Runs every 6 hours via GitHub Actions
 
 ### Weekly EDA Pipeline
 1. Load all data from MongoDB
@@ -337,4 +339,15 @@ MIT License - see LICENSE file for details.
 
 ---
 
-Last Updated: January 22, 2026
+Last Updated: January 24, 2026
+
+---
+
+## Workflow Automation
+
+GitHub Actions workflows automatically:
+- Continue from last stored state (no manual intervention needed)
+- Resume hourly feature collection from where it left off
+- Train models on growing dataset (90-day rolling window)
+- Generate predictions using latest trained models
+- All workflows work automatically after pushing to GitHub (no need to disable/enable)

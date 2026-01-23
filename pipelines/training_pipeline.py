@@ -156,5 +156,5 @@ def run_training_pipeline(min_days: int = 7, data_days: int = 120):
 
 
 if __name__ == "__main__":
-    # Run training pipeline
-    run_training_pipeline(min_days=7)
+    # Run training pipeline with 3+ months of data
+    run_training_pipeline(min_days=7, data_days=90)

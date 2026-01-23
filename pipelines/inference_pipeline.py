@@ -47,24 +47,25 @@ def load_best_model():
 
 
 def get_current_conditions():
-    """Fetch current AQI and weather conditions"""
-    print("\n🌍 Fetching current conditions...")
+    """Fetch current AQI and weather conditions from latest feature in MongoDB"""
+    print("\n🌍 Loading current conditions from MongoDB...")
     
-    fetcher = AQICNFetcher()
-    raw_data = fetcher.fetch_current_data()
+    db_handler = MongoDBHandler()
+    latest_df = db_handler.get_latest_features(limit=1)
+    db_handler.close()
     
-    if raw_data is None:
-        print("  [FAIL] Could not fetch current data")
+    if latest_df is None or len(latest_df) == 0:
+        print("  [FAIL] No features found in MongoDB")
         return None
     
-    engineer = FeatureEngineer()
-    features = engineer.create_features(raw_data)
+    latest_features = latest_df.iloc[0].to_dict()
     
-    print(f"  [OK] Current AQI: {features.get('aqi', 'N/A')}")
-    print(f"       Temperature: {features.get('temperature', 'N/A')}°C")
-    print(f"       Humidity: {features.get('humidity', 'N/A')}%")
+    print(f"  [OK] Current AQI: {latest_features.get('aqi', 'N/A')}")
+    print(f"       Temperature: {latest_features.get('temperature', 'N/A')}°C")
+    print(f"       Humidity: {latest_features.get('humidity', 'N/A')}%")
+    print(f"       Timestamp: {latest_features.get('timestamp', 'N/A')}")
     
-    return features
+    return latest_features
 
 
 def get_recent_aqi_history():

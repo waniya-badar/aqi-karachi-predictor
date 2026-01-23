@@ -63,7 +63,17 @@ def run_feature_pipeline(dry_run=False):
         features = engineer.create_features(raw_data)
         
         if not features:
-            logger.error("Failed to create features")
+            logger.error("Failed to create features - validation failed or missing data")
+            pipeline_status['steps']['engineering'] = 'FAILED'
+            _save_pipeline_log(pipeline_status)
+            return False
+        
+        # Additional validation: ensure all critical fields are present and non-null
+        required_fields = ['aqi', 'pm25', 'pm10', 'o3', 'no2', 'so2', 'co', 
+                         'temperature', 'humidity', 'pressure', 'wind_speed']
+        missing = [f for f in required_fields if features.get(f) in (None, '', 'null')]
+        if missing:
+            logger.error(f"Validation failed: Missing fields {missing}")
             pipeline_status['steps']['engineering'] = 'FAILED'
             _save_pipeline_log(pipeline_status)
             return False
