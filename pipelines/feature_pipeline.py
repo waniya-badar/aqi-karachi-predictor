@@ -91,7 +91,6 @@ def run_feature_pipeline(dry_run=False):
         pipeline_status['success'] = True
         pipeline_status['end_time'] = datetime.utcnow().isoformat()
         
-        _save_pipeline_log(pipeline_status)
         print(f"\nFeature Pipeline Completed Successfully!")
         print(f"AQI: {raw_data.get('aqi', 'N/A')}, Features: {len(features)}\n")
         return True
@@ -99,7 +98,6 @@ def run_feature_pipeline(dry_run=False):
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=True)
         pipeline_status['error'] = str(e)
-        _save_pipeline_log(pipeline_status)
         return False
         
     finally:
@@ -108,23 +106,6 @@ def run_feature_pipeline(dry_run=False):
                 db_handler.close()
             except:
                 pass
-
-
-def _save_pipeline_log(pipeline_status):
-    """Save pipeline execution log to MongoDB (serverless)"""
-    try:
-        from src.mongodb_handler import MongoDBHandler
-        db = MongoDBHandler()
-        # Save to pipeline_logs collection in MongoDB
-        db.db.pipeline_logs.insert_one({
-            'pipeline': 'feature',
-            'status': pipeline_status,
-            'logged_at': datetime.utcnow()
-        })
-        db.close()
-        logger.info("Pipeline log saved to MongoDB")
-    except Exception as e:
-        logger.warning(f"Failed to save log to MongoDB: {e}")
 
 
 if __name__ == "__main__":

@@ -140,14 +140,12 @@ def run_training_pipeline(min_days: int = 7, data_days: int = 120):
         pipeline_status['end_time'] = datetime.utcnow().isoformat()
         
         logger.info("Training Pipeline Completed Successfully")
-        _save_training_log(pipeline_status)
         return True
         
     except Exception as e:
         logger.error(f"Unexpected error in training pipeline: {e}", exc_info=True)
         pipeline_status['error'] = str(e)
         pipeline_status['end_time'] = datetime.utcnow().isoformat()
-        _save_training_log(pipeline_status)
         return False
     
     finally:
@@ -155,23 +153,6 @@ def run_training_pipeline(min_days: int = 7, data_days: int = 120):
             db_handler.close()
         except:
             pass
-
-
-def _save_training_log(pipeline_status):
-    """Save training pipeline execution log to MongoDB (serverless)"""
-    try:
-        from src.mongodb_handler import MongoDBHandler
-        db = MongoDBHandler()
-        # Save to pipeline_logs collection in MongoDB
-        db.db.pipeline_logs.insert_one({
-            'pipeline': 'training',
-            'status': pipeline_status,
-            'logged_at': datetime.utcnow()
-        })
-        db.close()
-        logger.info("Training log saved to MongoDB")
-    except Exception as e:
-        logger.warning(f"Failed to save training log to MongoDB: {e}")
 
 
 if __name__ == "__main__":
