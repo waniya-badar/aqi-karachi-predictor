@@ -24,21 +24,21 @@ An end-to-end machine learning system for predicting Air Quality Index (AQI) in 
 ## Architecture
 
 ```
-AQICN API --> GitHub Actions --> MongoDB Atlas
-                                     |
-              +----------------------+----------------------+
-              |                      |                      |
-        Hourly Pipeline        Daily Pipeline        Weekly Pipeline
-        (Feature Data)         (Model Training)      (EDA/SHAP/LIME)
-              |                      |                      |
-              v                      v                      v
-        MongoDB features      MongoDB models         Analysis Plots
-              |                      |
-              +----------+-----------+
-                         |
-                         v
-                  Streamlit Dashboard
-                  Inference Pipeline
+Open-Meteo API --> GitHub Actions --> MongoDB Atlas
+(Karachi Geo)                              |
+                  +----------------------+----------------------+
+                  |                      |                      |
+            Hourly Pipeline        Daily Pipeline        Weekly Pipeline
+            (Feature Data)         (Model Training)      (EDA Analysis)
+                  |                      |                      |
+                  v                      v                      v
+          MongoDB features      MongoDB models         Analysis Plots
+                  |                      |
+                  +----------+-----------+
+                             |
+                             v
+                      Streamlit Dashboard
+                      (On-demand predictions)
 ```
 
 ---
@@ -56,18 +56,16 @@ aqi-predictor-karachi/
 │   └── mongodb_handler.py       # MongoDB operations
 ├── pipelines/                    # Automated pipelines
 │   ├── feature_pipeline.py      # Hourly data collection
-│   ├── training_pipeline.py     # Daily model training
-│   └── inference_pipeline.py    # Prediction generation
+│   └── training_pipeline.py     # Daily model training
 ├── streamlit_app/               # Dashboard
 │   └── app.py                   # Main Streamlit app
 ├── notebooks/                   # Analysis scripts
-│   ├── eda_analysis.py         # Exploratory data analysis
+│   ├── eda_analysis.py         # Exploratory data analysis (dynamic + model comparison)
 │   └── explainability_analysis.py  # SHAP/LIME analysis
 ├── .github/workflows/          # GitHub Actions
 │   ├── hourly-feature-pipeline.yml
 │   ├── daily-training-pipeline.yml
-│   ├── weekly-eda-explainability.yml
-│   └── inference-pipeline.yml
+│   └── weekly-eda-explainability.yml
 ├── requirements.txt            # Python dependencies
 └── README.md                   # This file
 ```
@@ -140,15 +138,17 @@ Access at: http://localhost:8501
 
 ## Machine Learning Models
 
-### Models Implemented
+### Models Implemented (Trained on 90 days of real Karachi data)
 
-| Model | R² | MAE | RMSE |
-|-------|-----|-----|------|
-| Random Forest | 0.8923 | 4.00 | 5.52 |
-| Gradient Boosting | 0.8866 | 4.18 | 5.67 |
-| Ridge Regression | 0.8246 | 5.51 | 7.05 |
+All 3 models are trained daily on the latest data and saved to MongoDB. The dashboard allows you to compare predictions from each model in real-time.
 
-Best model is automatically selected based on highest R² score.
+| Model | R² Score | MAE | RMSE | Description |
+|-------|----------|-----|------|-------------|
+| Random Forest | 0.9847 | 1.33 | 2.86 | Ensemble of decision trees |
+| **Gradient Boosting** | **0.9919** | **1.14** | **2.08** | **Best model - Sequential ensemble** |
+| Ridge Regression | 0.9901 | 1.27 | 2.29 | Regularized linear model |
+
+**Best Model:** Gradient Boosting (R²=0.9919) is automatically selected but all models are available in the dashboard.
 
 ### Evaluation Metrics
 
@@ -184,17 +184,18 @@ Best model is automatically selected based on highest R² score.
 - 1-hour AQI change
 - 6-hour AQI change
 
-Total: 16 features used for prediction
+Total: 22 features used for prediction (excludes pollutant concentrations to prevent data leakage)
 
 ---
 
 ## Data Pipeline
 
 ### Hourly Feature Pipeline
-1. Fetch current AQI data from AQICN API
+1. Fetch current AQI data from Open-Meteo API (geo-based for Karachi)
 2. Create features (weather + AQI)
-3. Store in MongoDB features collection
-4. Runs every hour via GitHub Actions
+3. Validate data (no nulls allowed)
+4. Store in MongoDB features collection
+5. Runs every hour via GitHub Actions
 
 ### Daily Training Pipeline
 1. Fetch 90 days (3 months) of historical data from MongoDB cloud
@@ -206,18 +207,21 @@ Total: 16 features used for prediction
 7. Log training run to training_history collection
 8. Runs daily at 2 AM UTC via GitHub Actions
 
-### Inference Pipeline
-1. Load best model from MongoDB cloud (serverless)
-2. Fetch current conditions from Open-Meteo API
-3. Generate 3-day forecast (next 72 hours)
-4. Save predictions to MongoDB cloud
-5. Runs every 6 hours via GitHub Actions
+### Dashboard (Streamlit)
+1. Load all 3 models from MongoDB cloud (serverless)
+2. User selects which model to use for prediction
+3. Fetch latest features from MongoDB
+4. Generate 3-day forecast on-demand using selected model
+5. Display current AQI, predictions, historical data, and model metrics
 
 ### Weekly EDA Pipeline
-1. Load all data from MongoDB
-2. Generate EDA plots
-3. Run SHAP/LIME analysis
-4. Runs every Sunday
+1. Load all data from MongoDB dynamically
+2. Evaluate all 3 models on latest test data
+3. Generate comparative plots showing each model's performance
+4. Display model metrics (R², MAE, RMSE) for each model
+5. Create prediction accuracy charts for all 3 models
+6. Export summary with per-model statistics
+7. Runs every Sunday via GitHub Actions
 
 ---
 
@@ -238,10 +242,9 @@ Total: 16 features used for prediction
 
 | Workflow | Schedule | Purpose |
 |----------|----------|---------|
-| Hourly Feature Pipeline | Every hour | Collect AQI data |
-| Daily Training Pipeline | Daily 2 AM UTC | Train models |
-| Weekly EDA | Sundays | Analysis and plots |
-| Inference Pipeline | Every 6 hours | Generate predictions |
+| Hourly Feature Pipeline | Every hour | Collect AQI data from Open-Meteo |
+| Daily Training Pipeline | Daily 2 AM UTC | Train all 3 models on 90 days data |
+| Weekly EDA | Sundays | Analysis with per-model comparison |
 
 ---
 

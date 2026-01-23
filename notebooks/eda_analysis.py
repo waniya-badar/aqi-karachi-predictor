@@ -1,6 +1,7 @@
 """
 Exploratory Data Analysis - Karachi AQI
 Analyzes all data from MongoDB cloud database
+Displays results for all 3 trained models
 """
 
 import sys
@@ -13,9 +14,12 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
 import warnings
+import pickle
 warnings.filterwarnings('ignore')
 
 from src.mongodb_handler import MongoDBHandler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 sns.set_style("whitegrid")
 plt.rcParams['figure.figsize'] = (12, 6)
@@ -236,7 +240,135 @@ plt.tight_layout()
 plt.savefig('notebooks/plots/aqi_categories.png', dpi=300, bbox_inches='tight')
 print("Saved: aqi_categories.png")
 
-print("\n8. KEY INSIGHTS")
+print("\n8. MODEL PERFORMANCE ANALYSIS")
+
+print("\nLoading trained models from MongoDB...")
+db_handler_models = MongoDBHandler()
+models = {}
+model_metrics = {}
+
+model_names = ['random_forest', 'gradient_boosting', 'ridge']
+
+for model_name in model_names:
+    model_data = db_handler_models.get_model(model_name)
+    if model_data:
+        models[model_name] = pickle.loads(model_data['model_binary'])
+        scaler = pickle.loads(model_data['scaler_binary'])
+        metrics = model_data.get('metrics', {})
+        model_metrics[model_name] = {
+            'scaler': scaler,
+            'r2': metrics.get('test_r2', 0),
+            'mae': metrics.get('test_mae', 0),
+            'rmse': metrics.get('test_rmse', 0),
+            'train_r2': metrics.get('train_r2', 0)
+        }
+        print(f"  [OK] Loaded {model_name}")
+        print(f"       R²: {model_metrics[model_name]['r2']:.4f}, MAE: {model_metrics[model_name]['mae']:.2f}, RMSE: {model_metrics[model_name]['rmse']:.2f}")
+    else:
+        print(f"  [FAIL] Could not load {model_name}")
+
+db_handler_models.close()
+
+if len(models) > 0:
+    # Prepare feature columns for prediction
+    feature_cols = [col for col in df.columns if col not in ['timestamp', 'date', 'hour', 'day_name', 'month_name', 'aqi']]
+    
+    # Get subset with all required features
+    df_features = df[feature_cols + ['aqi']].dropna()
+    
+    if len(df_features) > 100:
+        # Split for evaluation
+        X = df_features[feature_cols]
+        y = df_features['aqi']
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        
+        print(f"\nEvaluating models on {len(X_test)} test samples...")
+        
+        # Evaluate each model
+        predictions = {}
+        for model_name, model in models.items():
+            scaler = model_metrics[model_name]['scaler']
+            X_test_scaled = scaler.transform(X_test)
+            y_pred = model.predict(X_test_scaled)
+            predictions[model_name] = y_pred
+            
+            # Calculate metrics
+            r2 = r2_score(y_test, y_pred)
+            mae = mean_absolute_error(y_test, y_pred)
+            rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+            
+            print(f"\n{model_name.replace('_', ' ').title()}:")
+            print(f"  R² Score: {r2:.4f}")
+            print(f"  MAE: {mae:.2f}")
+            print(f"  RMSE: {rmse:.2f}")
+        
+        # Plot model comparison
+        fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+        
+        for idx, (model_name, y_pred) in enumerate(predictions.items()):
+            axes[idx].scatter(y_test, y_pred, alpha=0.5, s=20)
+            axes[idx].plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 
+                          'r--', lw=2, label='Perfect Prediction')
+            
+            r2 = r2_score(y_test, y_pred)
+            mae = mean_absolute_error(y_test, y_pred)
+            
+            axes[idx].set_xlabel('Actual AQI')
+            axes[idx].set_ylabel('Predicted AQI')
+            axes[idx].set_title(f'{model_name.replace("_", " ").title()}\nR²={r2:.4f}, MAE={mae:.2f}', 
+                               fontweight='bold')
+            axes[idx].legend()
+            axes[idx].grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.savefig('notebooks/plots/model_predictions_comparison.png', dpi=300, bbox_inches='tight')
+        print("\nSaved: model_predictions_comparison.png")
+        
+        # Create metrics comparison bar chart
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+        
+        model_names_list = list(predictions.keys())
+        r2_scores = [r2_score(y_test, predictions[m]) for m in model_names_list]
+        mae_scores = [mean_absolute_error(y_test, predictions[m]) for m in model_names_list]
+        rmse_scores = [np.sqrt(mean_squared_error(y_test, predictions[m])) for m in model_names_list]
+        
+        colors = ['steelblue', 'coral', 'mediumseagreen']
+        
+        axes[0].bar(range(len(model_names_list)), r2_scores, color=colors, alpha=0.7)
+        axes[0].set_xticks(range(len(model_names_list)))
+        axes[0].set_xticklabels([m.replace('_', ' ').title() for m in model_names_list], rotation=45, ha='right')
+        axes[0].set_ylabel('R² Score')
+        axes[0].set_title('R² Score Comparison', fontweight='bold')
+        axes[0].grid(True, alpha=0.3, axis='y')
+        axes[0].set_ylim([min(r2_scores) - 0.01, 1.0])
+        
+        axes[1].bar(range(len(model_names_list)), mae_scores, color=colors, alpha=0.7)
+        axes[1].set_xticks(range(len(model_names_list)))
+        axes[1].set_xticklabels([m.replace('_', ' ').title() for m in model_names_list], rotation=45, ha='right')
+        axes[1].set_ylabel('MAE')
+        axes[1].set_title('MAE Comparison (lower is better)', fontweight='bold')
+        axes[1].grid(True, alpha=0.3, axis='y')
+        
+        axes[2].bar(range(len(model_names_list)), rmse_scores, color=colors, alpha=0.7)
+        axes[2].set_xticks(range(len(model_names_list)))
+        axes[2].set_xticklabels([m.replace('_', ' ').title() for m in model_names_list], rotation=45, ha='right')
+        axes[2].set_ylabel('RMSE')
+        axes[2].set_title('RMSE Comparison (lower is better)', fontweight='bold')
+        axes[2].grid(True, alpha=0.3, axis='y')
+        
+        plt.tight_layout()
+        plt.savefig('notebooks/plots/model_metrics_comparison.png', dpi=300, bbox_inches='tight')
+        print("Saved: model_metrics_comparison.png")
+        
+        # Find best model
+        best_model_name = model_names_list[np.argmax(r2_scores)]
+        print(f"\nBest Model: {best_model_name.replace('_', ' ').title()} (R²={max(r2_scores):.4f})")
+    else:
+        print("\nInsufficient data with features for model evaluation")
+else:
+    print("\nNo models loaded - skipping model evaluation")
+
+print("\n9. KEY INSIGHTS")
 
 print(f"\nData Summary:")
 print(f"  Total Records: {len(df)}")
@@ -274,7 +406,7 @@ if len(available_pollutants) > 0:
         corr = df[[pollutant, 'aqi']].corr().iloc[0, 1]
         print(f"  {pollutant.upper()}: {corr:.3f}")
 
-print("\n9. EXPORTING SUMMARY")
+print("\n10. EXPORTING SUMMARY")
 
 summary = {
     'Total Records': len(df),
@@ -289,6 +421,14 @@ summary = {
     'Unhealthy Hours (%)': (df['aqi'] > 150).sum() / len(df) * 100,
     'Hazardous Hours (%)': (df['aqi'] > 300).sum() / len(df) * 100
 }
+
+# Add model metrics to summary if available
+if len(models) > 0 and len(df_features) > 100:
+    for model_name in predictions.keys():
+        y_pred = predictions[model_name]
+        summary[f'{model_name}_r2'] = r2_score(y_test, y_pred)
+        summary[f'{model_name}_mae'] = mean_absolute_error(y_test, y_pred)
+        summary[f'{model_name}_rmse'] = np.sqrt(mean_squared_error(y_test, y_pred))
 
 summary_df = pd.DataFrame([summary])
 summary_df.to_csv('notebooks/eda_summary.csv', index=False)
