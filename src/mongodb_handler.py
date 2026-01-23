@@ -54,17 +54,26 @@ class MongoDBHandler:
             # Add metadata
             features['inserted_at'] = datetime.utcnow()
             
-            # Check if data for this timestamp already exists
+            # Check if data for this HOUR already exists (avoid duplicates from different sources)
+            # Round timestamp to the hour for comparison
+            ts = features['timestamp']
+            hour_start = ts.replace(minute=0, second=0, microsecond=0)
+            hour_end = hour_start + timedelta(hours=1)
+            
             existing = self.db.features.find_one({
-                'timestamp': features['timestamp']
+                'timestamp': {
+                    '$gte': hour_start,
+                    '$lt': hour_end
+                }
             })
             
             if existing:
+                # Update existing record for this hour
                 self.db.features.update_one(
-                    {'timestamp': features['timestamp']},
+                    {'_id': existing['_id']},
                     {'$set': features}
                 )
-                print(f"Updated features for {features['timestamp']}")
+                print(f"Updated features for hour {hour_start}")
             else:
                 self.db.features.insert_one(features)
                 print(f"Inserted features for {features['timestamp']}")
