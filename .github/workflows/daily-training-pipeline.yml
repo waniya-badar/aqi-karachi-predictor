@@ -125,6 +125,13 @@ jobs:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
       
+      - name: Generate predictions using trained models
+        run: |
+          python pipelines/inference_pipeline.py
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
+      
       - name: Create job summary
         if: always()
         run: |
