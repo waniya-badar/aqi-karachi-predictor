@@ -401,9 +401,11 @@ class ModelTrainer:
             print(f"{'='*60}")
             self.save_models_to_mongodb(db_handler, feature_names, best_model_name)
         else:
-            print(f"\n⚠️ WARNING: No MongoDB handler provided!")
+            print(f"\n[WARNING] No MongoDB handler provided!")
             print("Models were NOT saved to cloud storage.")
             print("This is not recommended for production.")
+        
+        return self.results
     
     def save_models_to_mongodb(self, db_handler, feature_names: List[str], best_model_name: str):
         """
@@ -449,20 +451,20 @@ class ModelTrainer:
                 'is_best': (model_name == best_model_name)
             })
 
-            print(f"  📦 Prepared: {model_name} (size: {len(model_binary)/1024:.1f} KB)")
+            print(f"  [BOX] Prepared: {model_name} (size: {len(model_binary)/1024:.1f} KB)")
 
         # Save all to MongoDB (versioned, never overwrites)
         success = db_handler.save_all_models(models_data)
 
         if success:
-            print(f"\n✅ SUCCESS: All {len(models_data)} models saved to MongoDB Cloud!")
-            print(f"   📦 Models collection: Latest versions")
-            print(f"   📚 Models_archive collection: All versions preserved")
-            print(f"   📜 Training_history collection: Training runs logged")
-            print(f"   ⭐ Best model: {best_model_name}")
-            print(f"\n   All models are safely stored and versioned in the cloud.")
+            print(f"\n[OK] SUCCESS: All {len(models_data)} models saved to MongoDB Cloud!")
+            print(f"   [MODELS] Models collection: Latest versions only (random_forest, gradient_boosting, ridge)")
+            print(f"   [ARCHIVE] Models_archive collection: All versions with timestamps")
+            print(f"   [LOG] Training_history collection: Training runs logged")
+            print(f"   [BEST] Best model: {best_model_name}")
+            print(f"\n   All models are safely stored and versioned in the cloud (serverless).")
         else:
-            print(f"\n❌ FAILED: Could not save models to MongoDB")
+            print(f"\n[ERROR] FAILED: Could not save models to MongoDB")
             print(f"   Please check MongoDB connection and permissions.")
 if __name__ == "__main__":
     print("Model trainer module loaded successfully")

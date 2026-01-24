@@ -56,7 +56,6 @@ def run_training_pipeline(min_days: int = 7, data_days: int = 120):
     except Exception as e:
         logger.error(f"Failed to initialize components: {e}")
         pipeline_status['error'] = str(e)
-        _save_training_log(pipeline_status)
         return False
     
     try:
@@ -70,7 +69,6 @@ def run_training_pipeline(min_days: int = 7, data_days: int = 120):
             logger.error(f"Insufficient data for training ({total_records} < 100)")
             pipeline_status['steps']['data_check'] = 'FAILED'
             pipeline_status['error'] = f"Only {total_records} records available (need ≥100)"
-            _save_training_log(pipeline_status)
             return False
         
         pipeline_status['steps']['data_check'] = 'SUCCESS'
@@ -85,7 +83,6 @@ def run_training_pipeline(min_days: int = 7, data_days: int = 120):
             logger.error("Failed to fetch training data")
             pipeline_status['steps']['data_fetch'] = 'FAILED'
             pipeline_status['error'] = "No training data available"
-            _save_training_log(pipeline_status)
             return False
         
         logger.info(f"Fetched {len(df)} records for training")
@@ -100,7 +97,6 @@ def run_training_pipeline(min_days: int = 7, data_days: int = 120):
             logger.error("Failed to train models")
             pipeline_status['steps']['training'] = 'FAILED'
             pipeline_status['error'] = "Model training failed"
-            _save_training_log(pipeline_status)
             return False
         
         logger.info(f"Successfully trained {len(trained_models)} models")

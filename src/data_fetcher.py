@@ -199,7 +199,7 @@ class AQICNFetcher:
             'wind_speed': round(weather.get('wind_speed_10m', 8), 1)
         }
 
-        print(f"✓ Open-Meteo: AQI={parsed_data['aqi']} (real data)")
+        print(f"[OK] Open-Meteo: AQI={parsed_data['aqi']} (real data)")
         return parsed_data
     
     def _parse_aqicn_response(self, aqi_data: Dict) -> Dict:
@@ -252,7 +252,7 @@ class AQICNFetcher:
         parsed_data['humidity'] = hum
         parsed_data['wind_speed'] = iaqi.get('w', {}).get('v', 8)
         
-        print(f"✓ AQICN: AQI={parsed_data['aqi']} (real data)")
+        print(f"[OK] AQICN: AQI={parsed_data['aqi']} (real data)")
         return parsed_data
     
     def _calculate_aqi_from_pm25(self, pm25: float) -> int:
@@ -320,7 +320,7 @@ class AQICNFetcher:
                         'source': 'open-meteo'
                     }
             
-            print(f"⚠ No historical data available for {date}")
+            print(f"[WARNING] No historical data available for {date}")
             return None
             
         except Exception as e:
@@ -341,7 +341,7 @@ if __name__ == "__main__":
     print("Testing AQICN and Open-Meteo connections...\n")
     
     if fetcher.test_connection():
-        print("✓ API connection successful!")
+        print("[OK] API connection successful!")
         
         # Fetch and display data
         data = fetcher.fetch_current_data()
@@ -354,6 +354,6 @@ if __name__ == "__main__":
             print(f"  PM10: {data['pm10']:.1f}")
             print(f"  Temperature: {data['temperature']}°C")
             print(f"  Humidity: {data['humidity']}%")
-            print(f"\n✓ Real data from {source} (US EPA AQI scale 0-500)")
+            print(f"\n[OK] Real data from {source} (US EPA AQI scale 0-500)")
     else:
-        print("✗ Both AQICN and Open-Meteo APIs failed!")
+        print("[ERROR] Both AQICN and Open-Meteo APIs failed!")

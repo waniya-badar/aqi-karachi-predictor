@@ -37,16 +37,10 @@ class MongoDBHandler:
             self.db.features.create_index([("timestamp", DESCENDING)])
             self.db.features.create_index([("date", DESCENDING)])
             
-            # Create indexes for models collections
+            # Create indexes for models collection
             self.db.models.create_index([("model_name", ASCENDING)], unique=True)
             self.db.models.create_index([("is_best", DESCENDING)])
             self.db.models.create_index([("trained_at", DESCENDING)])
-            
-            # Create indexes for models_archive collection
-            self.db.models_archive.create_index([("model_name", ASCENDING)])
-            self.db.models_archive.create_index([("version", DESCENDING)])
-            self.db.models_archive.create_index([("trained_at", DESCENDING)])
-            self.db.models_archive.create_index([("unique_id", ASCENDING)], unique=True)
             
             # Create indexes for training_history collection
             self.db.training_history.create_index([("timestamp", DESCENDING)])
@@ -228,8 +222,8 @@ class MongoDBHandler:
                    scaler_binary: bytes, feature_names: List[str],
                    metrics: Dict, is_best: bool = False) -> bool:
         """
-        Save a trained model to MongoDB (VERSIONED - never overwrites)
-        Models are stored in both 'models' (latest) and 'models_archive' (all versions)
+        Save a trained model to MongoDB
+        All models are stored in 'models' collection with versioning
         
         Args:
             model_name: Name of the model (e.g., 'random_forest')
@@ -256,29 +250,25 @@ class MongoDBHandler:
                 'version': version
             }
             
-            # 1. ARCHIVE: Save to models_archive (never overwrites, keeps all versions)
-            archive_doc = model_doc.copy()
-            archive_doc['unique_id'] = f"{model_name}_{version}"
-            self.db.models_archive.insert_one(archive_doc)
-            print(f"📦 Archived model '{model_name}' version {version}")
-            
-            # 2. LATEST: Update 'models' collection with latest version (for quick access)
+            # Save/Update in models collection (upsert)
             self.db.models.update_one(
                 {'model_name': model_name},
                 {'$set': model_doc},
                 upsert=True
             )
             
-            print(f"✅ Saved model '{model_name}' to MongoDB" + (" (BEST)" if is_best else ""))
+            print(f"[OK] Saved model '{model_name}' to MongoDB" + (" (BEST)" if is_best else ""))
             return True
             
         except Exception as e:
-            print(f"❌ Error saving model '{model_name}': {e}")
+            print(f"[ERROR] Error saving model '{model_name}': {e}")
             return False
     
     def save_all_models(self, models_data: List[Dict]) -> bool:
         """
         Save all trained models to MongoDB
+        - Latest: Saved to 'models' collection (upsert - only latest version)
+        - Archive: Saved to 'models_archive' collection (all versions with timestamp)
         
         Args:
             models_data: List of dicts with model_name, model_binary, scaler_binary, 
@@ -296,6 +286,7 @@ class MongoDBHandler:
             }
             
             for model_data in models_data:
+                # Save to LATEST models collection (upsert)
                 success = self.save_model(
                     model_name=model_data['model_name'],
                     model_binary=model_data['model_binary'],
@@ -308,6 +299,18 @@ class MongoDBHandler:
                 if not success:
                     return False
                 
+                # ALSO save to models_archive (all versions with timestamp)
+                archive_entry = {
+                    'model_name': model_data['model_name'],
+                    'model_binary': model_data['model_binary'],
+                    'scaler_binary': model_data['scaler_binary'],
+                    'feature_names': model_data['feature_names'],
+                    'metrics': model_data['metrics'],
+                    'is_best': model_data.get('is_best', False),
+                    'archived_at': datetime.utcnow()
+                }
+                self.db.models_archive.insert_one(archive_entry)
+                
                 # Add to training run record (without binary data)
                 training_run['models'][model_data['model_name']] = model_data['metrics']
                 if model_data.get('is_best'):
@@ -315,12 +318,12 @@ class MongoDBHandler:
             
             # Save training run to history collection
             self.db.training_history.insert_one(training_run)
-            print(f"✅ Training run saved to history")
+            print(f"[OK] Training run saved to history")
             
             return True
             
         except Exception as e:
-            print(f"❌ Error saving models: {e}")
+            print(f"[ERROR] Error saving models: {e}")
             return False
     
     def get_model(self, model_name: str) -> Optional[Dict]:
@@ -426,57 +429,31 @@ class MongoDBHandler:
     
     def get_model_versions(self, model_name: str, limit: int = 10) -> List[Dict]:
         """
-        Get all archived versions of a specific model
+        Get model versions (note: only latest version per model is stored)
+        Uses models collection which stores single latest version per model
         
         Args:
-            model_name: Name of model to retrieve versions for
-            limit: Max number of versions to return (default 10)
+            model_name: Name of model to retrieve
+            limit: Not used (only one version per model)
         
         Returns:
-            List of model version records (without binary data)
+            List of model records (without binary data)
         """
         try:
-            versions = self.db.models_archive.find(
+            # Since we only store one version per model, return it if found
+            model = self.db.models.find_one(
                 {'model_name': model_name},
                 {'model_binary': 0, 'scaler_binary': 0}
-            ).sort('trained_at', DESCENDING).limit(limit)
+            )
             
-            result = []
-            for version in versions:
-                version.pop('_id', None)
-                result.append(version)
+            if model:
+                model.pop('_id', None)
+                return [model]
             
-            return result
-            
-        except Exception as e:
-            print(f"Error retrieving model versions: {e}")
             return []
-    
-    def get_all_archived_models(self, limit: int = 50) -> List[Dict]:
-        """
-        Get all archived model versions (metadata only)
-        
-        Args:
-            limit: Max number of records to return
-        
-        Returns:
-            List of archived model records
-        """
-        try:
-            archives = self.db.models_archive.find(
-                {},
-                {'model_binary': 0, 'scaler_binary': 0}
-            ).sort('trained_at', DESCENDING).limit(limit)
-            
-            result = []
-            for archive in archives:
-                archive.pop('_id', None)
-                result.append(archive)
-            
-            return result
             
         except Exception as e:
-            print(f"Error retrieving archived models: {e}")
+            print(f"Error retrieving model: {e}")
             return []
     
     def save_prediction(self, prediction_data: Dict) -> bool:
