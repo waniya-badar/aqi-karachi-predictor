@@ -98,8 +98,8 @@ jobs:
               print(f'  - {model_name}: R²={test_r2:.4f}, RMSE={test_rmse:.2f}{is_best}')
           
           # Check archived versions
-          archives = db.get_all_archived_models(limit=10)
-          print(f'Archived versions: {len(archives)} (all versions preserved)')
+          total_archives = db.db.models_archive.count_documents({})
+          print(f'Archived versions: {total_archives} total (all versions preserved)')
           
           # Get best model
           best = db.get_best_model()
