@@ -92,12 +92,14 @@ jobs:
           for m in models:
               model_name = m.get('model_name', 'Unknown')
               metrics = m.get('metrics', {})
+              test_r2 = metrics.get('test_r2', 0)
+              test_rmse = metrics.get('test_rmse', 0)
               is_best = ' (BEST)' if m.get('is_best') else ''
-              print(f'  - {model_name}: R²={metrics.get("test_r2", 0):.4f}, RMSE={metrics.get("test_rmse", 0):.2f}{is_best}')
+              print(f'  - {model_name}: R²={test_r2:.4f}, RMSE={test_rmse:.2f}{is_best}')
           
           # Check archived versions
           archives = db.get_all_archived_models(limit=10)
-          print(f'\nArchived versions: {len(archives)} (all versions preserved)')
+          print(f'Archived versions: {len(archives)} (all versions preserved)')
           
           # Get best model
           best = db.get_best_model()
