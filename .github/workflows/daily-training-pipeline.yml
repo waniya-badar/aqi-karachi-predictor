@@ -48,7 +48,9 @@ jobs:
           models = db.get_all_models_metadata()
           print(f'Existing models in MongoDB: {len(models)}')
           for m in models:
-              print(f'  - {m[\"model_name\"]}: R²={m.get(\"metrics\", {}).get(\"test_r2\", \"N/A\")}')
+              model_name = m.get('model_name', 'Unknown')
+              r2_score = m.get('metrics', {}).get('test_r2', 'N/A')
+              print(f'  - {model_name}: R²={r2_score}')
           
           # Check archived models
           archives = db.get_all_archived_models(limit=5)
