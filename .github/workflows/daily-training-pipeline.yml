@@ -1,4 +1,4 @@
-name: Daily Model Training Pipeline (Cloud)
+name: Daily Model Training Pipeline (Cloud Storage)
 
 on:
   schedule:
@@ -33,59 +33,68 @@ jobs:
           sys.path.insert(0, '.')
           from src.mongodb_handler import MongoDBHandler
           
-          print('Connecting to MongoDB...')
+          print('🔗 Connecting to MongoDB Cloud...')
           db = MongoDBHandler()
           
           # Check data availability
           total_records = db.db.features.count_documents({})
-          print(f'Total feature records: {total_records}')
+          print(f'📊 Total feature records: {total_records}')
           
           if total_records < 100:
-              print(f'ERROR: Insufficient data ({total_records} < 100)')
+              print(f'❌ ERROR: Insufficient data ({total_records} < 100)')
               sys.exit(1)
           
           # Check existing models
           models = db.get_all_models_metadata()
-          print(f'Existing models in MongoDB: {len(models)}')
+          print(f'📦 Existing models in MongoDB: {len(models)}')
           for m in models:
               print(f'  - {m[\"model_name\"]}: R²={m.get(\"metrics\", {}).get(\"test_r2\", \"N/A\")}')
           
+          # Check archived models
+          archives = db.get_all_archived_models(limit=5)
+          print(f'📚 Archived model versions: {len(archives)}')
+          
           db.close()
-          print('MongoDB connection verified!')
+          print('✅ MongoDB connection verified!')
           "
         env:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
       
-      - name: Run model training (saves to MongoDB)
+      - name: Run model training (Cloud Storage - Versioned)
         run: |
           python pipelines/training_pipeline.py
         env:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
       
-      - name: Verify models in MongoDB
+      - name: Verify models saved to MongoDB Cloud
         run: |
           python -c "
           import sys
           sys.path.insert(0, '.')
           from src.mongodb_handler import MongoDBHandler
           
-          print('Verifying models in MongoDB...')
+          print('🔍 Verifying models in MongoDB Cloud...')
           db = MongoDBHandler()
           
           # Get all models
           models = db.get_all_models_metadata()
           
           if not models or len(models) < 3:
-              print(f'ERROR: Expected 3 models, found {len(models)}')
+              print(f'❌ ERROR: Expected 3 models, found {len(models)}')
               sys.exit(1)
           
-          print(f'✅ All {len(models)} models saved to MongoDB:')
+          print(f'✅ All {len(models)} models saved to MongoDB Cloud:')
+          print(f'   📦 Collection: models (latest versions)')
           for m in models:
               metrics = m.get('metrics', {})
-              is_best = ' (BEST)' if m.get('is_best') else ''
+              is_best = ' ⭐ (BEST)' if m.get('is_best') else ''
               print(f'  - {m[\"model_name\"]}: R²={metrics.get(\"test_r2\", 0):.4f}, RMSE={metrics.get(\"test_rmse\", 0):.2f}{is_best}')
+          
+          # Check archived versions
+          archives = db.get_all_archived_models(limit=10)
+          print(f'\\n📚 Archived versions: {len(archives)} (all versions preserved)')
           
           # Get best model
           best = db.get_best_model()
@@ -96,6 +105,16 @@ jobs:
           # Get training history
           history = db.get_training_history(limit=3)
           print(f'\\n📜 Recent Training History: {len(history)} runs')
+          for h in history:
+              print(f'  - {h.get(\"timestamp\", \"Unknown\")}')
+          
+          db.close()
+          print(f'\\n✅ VERIFICATION COMPLETE')
+          print(f'   All models are safely stored in MongoDB Cloud with versioning.')
+          "
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
           for h in history:
               print(f'  - {h.get(\"timestamp\", \"Unknown\")}')
           

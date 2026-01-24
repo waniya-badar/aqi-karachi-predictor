@@ -33,8 +33,27 @@ class MongoDBHandler:
             self.db = self.client[self.db_name]
             print(f"Connected to MongoDB: {self.db_name}")
             
+            # Create indexes for features collection
             self.db.features.create_index([("timestamp", DESCENDING)])
             self.db.features.create_index([("date", DESCENDING)])
+            
+            # Create indexes for models collections
+            self.db.models.create_index([("model_name", ASCENDING)], unique=True)
+            self.db.models.create_index([("is_best", DESCENDING)])
+            self.db.models.create_index([("trained_at", DESCENDING)])
+            
+            # Create indexes for models_archive collection
+            self.db.models_archive.create_index([("model_name", ASCENDING)])
+            self.db.models_archive.create_index([("version", DESCENDING)])
+            self.db.models_archive.create_index([("trained_at", DESCENDING)])
+            self.db.models_archive.create_index([("unique_id", ASCENDING)], unique=True)
+            
+            # Create indexes for training_history collection
+            self.db.training_history.create_index([("timestamp", DESCENDING)])
+            
+            # Create indexes for predictions collection
+            self.db.predictions.create_index([("timestamp", DESCENDING)])
+            self.db.predictions.create_index([("saved_at", DESCENDING)])
             
         except ConnectionFailure as e:
             print(f"Failed to connect to MongoDB: {e}")
@@ -209,7 +228,8 @@ class MongoDBHandler:
                    scaler_binary: bytes, feature_names: List[str],
                    metrics: Dict, is_best: bool = False) -> bool:
         """
-        Save a trained model to MongoDB
+        Save a trained model to MongoDB (VERSIONED - never overwrites)
+        Models are stored in both 'models' (latest) and 'models_archive' (all versions)
         
         Args:
             model_name: Name of the model (e.g., 'random_forest')
@@ -223,6 +243,8 @@ class MongoDBHandler:
             bool: True if successful
         """
         try:
+            version = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            
             model_doc = {
                 'model_name': model_name,
                 'model_binary': model_binary,
@@ -231,10 +253,16 @@ class MongoDBHandler:
                 'metrics': metrics,
                 'is_best': is_best,
                 'trained_at': datetime.utcnow(),
-                'version': datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                'version': version
             }
             
-            # Upsert - update if exists, insert if not
+            # 1. ARCHIVE: Save to models_archive (never overwrites, keeps all versions)
+            archive_doc = model_doc.copy()
+            archive_doc['unique_id'] = f"{model_name}_{version}"
+            self.db.models_archive.insert_one(archive_doc)
+            print(f"📦 Archived model '{model_name}' version {version}")
+            
+            # 2. LATEST: Update 'models' collection with latest version (for quick access)
             self.db.models.update_one(
                 {'model_name': model_name},
                 {'$set': model_doc},
@@ -395,6 +423,105 @@ class MongoDBHandler:
         except Exception as e:
             print(f"Error retrieving training history: {e}")
             return []
+    
+    def get_model_versions(self, model_name: str, limit: int = 10) -> List[Dict]:
+        """
+        Get all archived versions of a specific model
+        
+        Args:
+            model_name: Name of model to retrieve versions for
+            limit: Max number of versions to return (default 10)
+        
+        Returns:
+            List of model version records (without binary data)
+        """
+        try:
+            versions = self.db.models_archive.find(
+                {'model_name': model_name},
+                {'model_binary': 0, 'scaler_binary': 0}
+            ).sort('trained_at', DESCENDING).limit(limit)
+            
+            result = []
+            for version in versions:
+                version.pop('_id', None)
+                result.append(version)
+            
+            return result
+            
+        except Exception as e:
+            print(f"Error retrieving model versions: {e}")
+            return []
+    
+    def get_all_archived_models(self, limit: int = 50) -> List[Dict]:
+        """
+        Get all archived model versions (metadata only)
+        
+        Args:
+            limit: Max number of records to return
+        
+        Returns:
+            List of archived model records
+        """
+        try:
+            archives = self.db.models_archive.find(
+                {},
+                {'model_binary': 0, 'scaler_binary': 0}
+            ).sort('trained_at', DESCENDING).limit(limit)
+            
+            result = []
+            for archive in archives:
+                archive.pop('_id', None)
+                result.append(archive)
+            
+            return result
+            
+        except Exception as e:
+            print(f"Error retrieving archived models: {e}")
+            return []
+    
+    def save_prediction(self, prediction_data: Dict) -> bool:
+        """
+        Save a prediction to predictions collection in MongoDB
+        
+        Args:
+            prediction_data: Dictionary with prediction information
+        
+        Returns:
+            bool: True if successful
+        """
+        try:
+            prediction_data['saved_at'] = datetime.utcnow()
+            self.db.predictions.insert_one(prediction_data)
+            return True
+        except Exception as e:
+            print(f"Error saving prediction: {e}")
+            return False
+    
+    def get_recent_predictions(self, limit: int = 10) -> List[Dict]:
+        """
+        Get recent predictions from MongoDB
+        
+        Args:
+            limit: Max number of predictions to return
+        
+        Returns:
+            List of prediction records
+        """
+        try:
+            predictions = self.db.predictions.find().sort(
+                'timestamp', DESCENDING
+            ).limit(limit)
+            
+            result = []
+            for pred in predictions:
+                pred.pop('_id', None)
+                result.append(pred)
+            
+            return result
+            
+        except Exception as e:
+            print(f"Error retrieving predictions: {e}")
+            return []
 
 
 if __name__ == "__main__":
@@ -403,12 +530,12 @@ if __name__ == "__main__":
     print(f"\nDatabase Statistics:")
     print(f"Total Records: {stats.get('total_records', 0)}")
     print(f"Date Range: {stats.get('date_range_days', 0)} days")
-    
+
     # Check models
     models = handler.get_all_models_metadata()
     print(f"\nStored Models: {len(models)}")
     for m in models:
-        print(f"  - {m['model_name']}: R²={m.get('metrics', {}).get('test_r2', 'N/A'):.4f}" + 
+        print(f"  - {m['model_name']}: R²={m.get('metrics', {}).get('test_r2', 'N/A'):.4f}" +
               (" (BEST)" if m.get('is_best') else ""))
-    
+
     handler.close()

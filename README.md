@@ -8,37 +8,53 @@ Predict Air Quality Index for Karachi using a 100% Serverless Machine Learning S
 
 An end-to-end machine learning system for predicting Air Quality Index (AQI) in Karachi featuring:
 
-- Real-time Data Collection - Hourly AQI data from Open-Meteo API (geo-based for Karachi: 24.8607, 67.0011)
-- Cloud Storage - All data and models stored in MongoDB Atlas (serverless)
-- Feature Engineering - Lag features, rolling statistics, temporal features (22 dynamic features)
-- 3 ML Models - Random Forest, Gradient Boosting, Ridge Regression
-- Training Dataset - 3 months (90 days) of historical Karachi data
-- Automated Model Selection - Best model selected based on R² score
-- Interactive Dashboard - Streamlit web application (loads models from MongoDB cloud)
-- 3-Day Forecasting - Predictions for next 3 days using trained models
-- Explainability - SHAP and LIME analysis
-- CI/CD Automation - GitHub Actions for hourly/daily pipelines (continues from last stored state)
+- **Real-time Data Collection** - Hourly AQI data from Open-Meteo API (geo-based for Karachi: 24.8607, 67.0011)
+- **Cloud Storage** - All data, models, predictions, and history stored in MongoDB Atlas (serverless)
+- **Versioned Model Storage** - Models are archived and never overwritten
+- **Feature Engineering** - Lag features, rolling statistics, temporal features (22 dynamic features)
+- **3 ML Models** - Random Forest, Gradient Boosting, Ridge Regression
+- **Training Dataset** - 3 months (90 days) of historical Karachi data
+- **Automated Model Selection** - Best model selected based on R² score
+- **Interactive Dashboard** - Streamlit web application (loads models from MongoDB cloud)
+- **3-Day Forecasting** - Predictions for next 3 days using trained models
+- **Dynamic EDA** - Jupyter notebook for exploratory data analysis with visualizations
+- **CI/CD Automation** - GitHub Actions for hourly/daily pipelines (continues from last stored state)
+
+---
+
+## MongoDB Collections
+
+All data is stored in MongoDB Atlas with the following collections:
+
+- **features** - Hourly feature data (weather, temporal, AQI)
+- **models** - Latest version of each trained model
+- **models_archive** - All historical model versions (versioned, never overwritten)
+- **training_history** - Training run logs and metrics
+- **predictions** - Forecast predictions with timestamps
 
 ---
 
 ## Architecture
 
 ```
-Open-Meteo API --> GitHub Actions --> MongoDB Atlas
+Open-Meteo API --> GitHub Actions --> MongoDB Atlas (Cloud)
 (Karachi Geo)                              |
                   +----------------------+----------------------+
                   |                      |                      |
-            Hourly Pipeline        Daily Pipeline        Weekly Pipeline
-            (Feature Data)         (Model Training)      (EDA Analysis)
+            Hourly Pipeline        Daily Pipeline         EDA Notebook
+            (Feature Data)       (Model Training)      (Manual Analysis)
                   |                      |                      |
                   v                      v                      v
-          MongoDB features      MongoDB models         Analysis Plots
+          MongoDB: features    MongoDB: models          Visualizations
+                               models_archive                   &
+                               training_history         Insights
+                               predictions
                   |                      |
                   +----------+-----------+
                              |
                              v
                       Streamlit Dashboard
-                      (On-demand predictions)
+                   (Real-time predictions)
 ```
 
 ---

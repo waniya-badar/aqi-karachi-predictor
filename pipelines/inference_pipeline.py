@@ -203,20 +203,23 @@ def get_aqi_category(aqi):
 
 
 def save_predictions_to_mongodb(predictions, current_aqi):
-    """Save predictions to MongoDB for tracking"""
+    """Save predictions to MongoDB for tracking (Cloud Storage)"""
     db_handler = MongoDBHandler()
-    
+
     prediction_record = {
         'timestamp': datetime.now(),
         'current_aqi': current_aqi,
         'predictions': predictions,
-        'model_used': 'best_model'
+        'model_used': 'best_model',
+        'prediction_horizon_days': len(predictions)
     }
-    
+
     try:
-        db_handler.db.predictions.insert_one(prediction_record)
-        print("  [OK] Predictions saved to MongoDB")
-    except Exception as e:
+        success = db_handler.save_prediction(prediction_record)
+        if success:
+            print("  [OK] Predictions saved to MongoDB (predictions collection)")
+        else:
+            print("  [WARN] Could not save predictions")
         print(f"  [WARN] Could not save predictions: {e}")
     
     db_handler.close()
