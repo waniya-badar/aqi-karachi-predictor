@@ -84,9 +84,8 @@ def get_all_models_info():
         return []
 
 
-@st.cache_data(ttl=60)
 def get_predictions_from_mongodb():
-    """Get latest predictions from MongoDB cloud - includes all models"""
+    """Get latest predictions from MongoDB cloud - includes all models (NO CACHE - Always fresh)"""
     try:
         db = get_db_handler()
         predictions_doc = db.db.predictions.find_one(sort=[('timestamp', -1)])
