@@ -12,8 +12,8 @@ An end-to-end machine learning system for predicting Air Quality Index (AQI) in 
 - **Cloud Storage** - All data, models, predictions, and history stored in MongoDB Atlas (serverless)
 - **Versioned Model Storage** - Models are archived and never overwritten
 - **Feature Engineering** - Lag features, rolling statistics, temporal features (22 dynamic features)
-- **3 ML Models** - Random Forest, Gradient Boosting, Ridge Regression
-- **Training Dataset** - 3 months (90 days) of historical Karachi data
+- **Multiple ML Models** - Random Forest, Gradient Boosting, Ridge Regression, and more.
+- **Training Dataset** - Up to a year of historical Karachi data.
 - **Automated Model Selection** - Best model selected based on R² score
 - **Interactive Dashboard** - Streamlit web application (loads models from MongoDB cloud)
 - **3-Day Forecasting** - Predictions for next 3 days using trained models
@@ -64,10 +64,10 @@ Open-Meteo API --> GitHub Actions --> MongoDB Atlas (Cloud)
 ```
 aqi-predictor-karachi/
 ├── src/                          # Core modules
-│   ├── data_fetcher.py          # AQICN API integration
+│   ├── data_fetcher.py          # Open-Meteo API integration
 │   ├── feature_engineering.py   # Feature creation
 │   ├── model_trainer.py         # ML model training
-│   ├── model_explainer.py       # SHAP explainability
+│   ├── model_explainer.py       # SHAP/LIME explainability
 │   ├── alert_system.py          # AQI alert system
 │   └── mongodb_handler.py       # MongoDB operations
 ├── pipelines/                    # Automated pipelines
@@ -76,12 +76,10 @@ aqi-predictor-karachi/
 ├── streamlit_app/               # Dashboard
 │   └── app.py                   # Main Streamlit app
 ├── notebooks/                   # Analysis scripts
-│   ├── eda_analysis.py         # Exploratory data analysis (dynamic + model comparison)
-│   └── explainability_analysis.py  # SHAP/LIME analysis
+│   └── eda_and_explainability.ipynb # Comprehensive EDA, modeling, and explainability
 ├── .github/workflows/          # GitHub Actions
 │   ├── hourly-feature-pipeline.yml
-│   ├── daily-training-pipeline.yml
-│   └── weekly-eda-explainability.yml
+│   └── daily-training-pipeline.yml
 ├── requirements.txt            # Python dependencies
 └── README.md                   # This file
 ```
@@ -94,7 +92,6 @@ aqi-predictor-karachi/
 
 - Python 3.8+
 - MongoDB Atlas account
-- AQICN API key
 
 ### Installation
 
