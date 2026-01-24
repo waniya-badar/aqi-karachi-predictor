@@ -88,7 +88,8 @@ def get_predictions_from_mongodb():
     """Get latest predictions from MongoDB cloud - includes all models (NO CACHE - Always fresh)"""
     try:
         db = get_db_handler()
-        predictions_doc = db.db.predictions.find_one(sort=[('timestamp', -1)])
+        # Sort by saved_at to get the most recently saved prediction
+        predictions_doc = db.db.predictions.find_one(sort=[('saved_at', -1)])
         if predictions_doc:
             return predictions_doc
         return None
@@ -341,6 +342,10 @@ def main():
             
             # Load predictions from MongoDB
             mongo_predictions = get_predictions_from_mongodb()
+            
+            # DEBUG: Show what we loaded
+            if mongo_predictions:
+                st.caption(f"🔄 Loaded prediction from: {mongo_predictions.get('saved_at', 'Unknown')} | Current AQI: {mongo_predictions.get('current_aqi', 'N/A')}")
             
             if mongo_predictions and 'all_model_predictions' in mongo_predictions:
                 all_models_preds = mongo_predictions.get('all_model_predictions', [])
