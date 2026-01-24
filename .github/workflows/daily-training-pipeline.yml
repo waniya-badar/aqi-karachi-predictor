@@ -90,9 +90,10 @@ jobs:
           print(f'All {len(models)} models saved to MongoDB Cloud:')
           print(f'   Collection: models (latest versions)')
           for m in models:
+              model_name = m.get('model_name', 'Unknown')
               metrics = m.get('metrics', {})
               is_best = ' (BEST)' if m.get('is_best') else ''
-              print(f'  - {m[\"model_name\"]}: R²={metrics.get(\"test_r2\", 0):.4f}, RMSE={metrics.get(\"test_rmse\", 0):.2f}{is_best}')
+              print(f'  - {model_name}: R²={metrics.get("test_r2", 0):.4f}, RMSE={metrics.get("test_rmse", 0):.2f}{is_best}')
           
           # Check archived versions
           archives = db.get_all_archived_models(limit=10)
