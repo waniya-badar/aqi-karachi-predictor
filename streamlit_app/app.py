@@ -84,7 +84,7 @@ def get_all_models_info():
         return []
 
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=60)
 def get_predictions_from_mongodb():
     """Get latest predictions from MongoDB cloud - includes all models"""
     try:
@@ -465,9 +465,16 @@ def main():
     
     # Footer
     st.markdown("---")
+    
+    # Display last update time
+    mongo_predictions = get_predictions_from_mongodb()
+    if mongo_predictions:
+        last_update = mongo_predictions.get('saved_at', 'Unknown')
+        st.markdown(f"<div style='text-align: center; color: #888; font-size: 11px;'>Last prediction update: {last_update}</div>", unsafe_allow_html=True)
+    
     st.markdown("""
         <div style="text-align: center; color: #666; font-size: 12px;">
-            Data Sources: AQICN API, Open-Meteo (FREE) | Updated hourly | Models retrain daily<br>
+            Data Sources: AQICN API, Open-Meteo (FREE) | Cache refreshes every 60 seconds | Models retrain daily<br>
             <span style="color: #888;">Historical data: Open-Meteo Air Quality API (Real data, no API key needed)</span>
         </div>
     """, unsafe_allow_html=True)
