@@ -104,14 +104,18 @@ jobs:
           # Get best model
           best = db.get_best_model()
           if best:
-              print(f'\nBest Model: {best["model_name"]}')
-              print(f'   Test R²: {best.get(\"metrics\", {}).get(\"test_r2\", 0):.4f}')
+              best_name = best.get('model_name', 'Unknown')
+              best_metrics = best.get('metrics', {})
+              best_r2 = best_metrics.get('test_r2', 0)
+              print(f'\nBest Model: {best_name}')
+              print(f'   Test R²: {best_r2:.4f}')
           
           # Get training history
           history = db.get_training_history(limit=3)
           print(f'\nRecent Training History: {len(history)} runs')
           for h in history:
-              print(f'  - {h.get(\"timestamp\", \"Unknown\")}')
+              timestamp = h.get('timestamp', 'Unknown')
+              print(f'  - {timestamp}')
           
           db.close()
           print(f'\nVERIFICATION COMPLETE')
