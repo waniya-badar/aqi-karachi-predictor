@@ -456,6 +456,33 @@ class MongoDBHandler:
             print(f"Error retrieving model: {e}")
             return []
     
+    def get_all_archived_models(self, limit: int = 10) -> List[Dict]:
+        """
+        Get all archived model versions from models_archive collection
+        
+        Args:
+            limit: Maximum number of archived models to return
+        
+        Returns:
+            List of archived model records (without binary data)
+        """
+        try:
+            archived = self.db.models_archive.find(
+                {},
+                {'model_binary': 0, 'scaler_binary': 0}
+            ).sort('archived_at', DESCENDING).limit(limit)
+            
+            result = []
+            for model in archived:
+                model.pop('_id', None)
+                result.append(model)
+            
+            return result
+            
+        except Exception as e:
+            print(f"Error retrieving archived models: {e}")
+            return []
+    
     def save_prediction(self, prediction_data: Dict) -> bool:
         """
         Save a prediction to predictions collection in MongoDB
