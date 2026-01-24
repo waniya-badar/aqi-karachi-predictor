@@ -115,15 +115,6 @@ jobs:
         env:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
-          for h in history:
-              print(f'  - {h.get(\"timestamp\", \"Unknown\")}')
-          
-          db.close()
-          print('\\n✅ Model verification complete!')
-          "
-        env:
-          MONGODB_URI: ${{ secrets.MONGODB_URI }}
-          MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
       
       - name: Create job summary
         if: always()
