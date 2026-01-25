@@ -343,10 +343,6 @@ def main():
             # Load predictions from MongoDB
             mongo_predictions = get_predictions_from_mongodb()
             
-            # DEBUG: Show what we loaded
-            if mongo_predictions:
-                st.caption(f"🔄 Loaded prediction from: {mongo_predictions.get('saved_at', 'Unknown')} | Current AQI: {mongo_predictions.get('current_aqi', 'N/A')}")
-            
             if mongo_predictions and 'all_model_predictions' in mongo_predictions:
                 all_models_preds = mongo_predictions.get('all_model_predictions', [])
                 st.info(f"Predictions available from {len(all_models_preds)} model(s) | Best model: {mongo_predictions.get('best_model', 'N/A')}")
