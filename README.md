@@ -1,5 +1,6 @@
 # AQI Predictor for Karachi
 
+Public URL: https://aqi-karachi-predictor-production.up.railway.app/
 Predict Air Quality Index for Karachi using a 100% Serverless Machine Learning Stack
 
 ---
